@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>上海国际赛车场 · 3D 看台选座</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="labels"></div>
+
+  <header class="brand glass">
+    <div class="brand-mark"><span></span></div>
+    <div>
+      <h1>上海国际赛车场</h1>
+      <p>Shanghai International Circuit · 5.451 km · 16 弯</p>
+    </div>
+  </header>
+
+  <div class="top-right">
+    <div class="segmented glass" id="themeSeg" role="tablist" aria-label="昼夜模式">
+      <div class="seg-thumb"></div>
+      <button data-mode="day" class="on" role="tab">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>
+        白天
+      </button>
+      <button data-mode="night" role="tab">
+        <svg viewBox="0 0 24 24"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2Z"/></svg>
+        黑夜
+      </button>
+    </div>
+  </div>
+
+  <aside class="panel left glass" id="list">
+    <div class="panel-head">
+      <h2>看台与票价</h2>
+      <span class="muted">三日票 · 人民币</span>
+    </div>
+    <div class="list-scroll" id="listItems"></div>
+    <p class="footnote">标注“参考”的价格为演示估价，实际以久事体育官方票务为准。<br/>地图数据 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 贡献者</p>
+  </aside>
+
+  <aside class="panel right glass hidden" id="detail"></aside>
+
+  <div class="minimap glass" id="minimap"></div>
+
+  <nav class="dock glass">
+    <button id="zoomOut" title="缩小" aria-label="缩小"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+    <button id="zoomIn" title="放大" aria-label="放大"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <i></i>
+    <button id="home" class="wide" title="回到全景"><svg viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5M6.5 10v8.5h11V10"/></svg>全景</button>
+  </nav>
+
+  <a class="osm-credit" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap 贡献者</a>
+  <div class="hint" id="hint">拖动旋转 · 滚轮缩放 · 右键平移 · 点击看台探索</div>
+  <div id="tooltip" class="glass"></div>
+  <div id="toast" class="glass"></div>
+
+  <div id="splash">
+    <canvas></canvas>
+    <div class="sp-top">
+      <div class="brand-mark"><span></span></div>
+      <h1>上海国际赛车场</h1>
+      <p>FORMULA 1 · 环球分站之旅</p>
+    </div>
+    <div class="sp-bottom">
+      <div class="sp-venue"><b class="sp-city">&nbsp;</b><span class="sp-gp">&nbsp;</span></div>
+      <div class="sp-meta"><span class="sp-step">正在准备</span><span class="sp-count">0 / 24</span></div>
+      <div class="sp-bar"><i></i></div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/boot.js"></script>
+</body>
+</html>

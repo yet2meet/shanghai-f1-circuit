@@ -1,0 +1,180 @@
+import * as THREE from 'three';
+import { V, rng, std, floodlit, lampMat, canvasTex } from './util.js';
+import { HW } from './track.js';
+
+const CENTER = V(-200, -20);
+
+function glowTexture() {
+  return canvasTex(64, 64, (c) => {
+    const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.25, 'rgba(255,244,214,0.55)');
+    g.addColorStop(1, 'rgba(255,240,200,0)');
+    c.fillStyle = g; c.fillRect(0, 0, 64, 64);
+  });
+}
+
+export function buildEnvironment(scene, track, stands) {
+  const env = { glows: [] };
+  const rand = rng(20040926);
+
+  // ── 天空 ──
+  const skyU = { top: { value: new THREE.Color() }, bottom: { value: new THREE.Color() } };
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 32, 16),
+    new THREE.ShaderMaterial({
+      uniforms: skyU, side: THREE.BackSide, depthTest: false, depthWrite: false, fog: false,
+      vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); vec4 p = modelViewMatrix * vec4(position * 100.0, 0.0); gl_Position = projectionMatrix * vec4(p.xyz, 1.0); }',
+      fragmentShader: 'uniform vec3 top; uniform vec3 bottom; varying vec3 vP; void main(){ float h = clamp(vP.y * 1.15 + 0.04, 0.0, 1.0); gl_FragColor = vec4(mix(bottom, top, pow(h, 0.55)), 1.0); }',
+    })
+  );
+  sky.renderOrder = -1000; sky.frustumCulled = false;
+  scene.add(sky);
+  env.skyU = skyU;
+
+  // 星空
+  const sp = [];
+  for (let i = 0; i < 1400; i++) {
+    const th = rand() * Math.PI * 2, ph = Math.acos(rand() * 0.95 + 0.03);
+    sp.push(Math.sin(ph) * Math.cos(th) * 6000, Math.cos(ph) * 6000, Math.sin(ph) * Math.sin(th) * 6000);
+  }
+  const sg = new THREE.BufferGeometry();
+  sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+  env.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: '#ffffff', size: 1.8, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false }));
+  env.stars.frustumCulled = false;
+  scene.add(env.stars);
+
+  // ── 地面 ──
+  const grassTex = canvasTex(512, 512, (c, w, h) => {
+    c.fillStyle = '#4f8a40'; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < 9000; i++) {
+      const l = 30 + Math.random() * 16;
+      c.fillStyle = `hsla(${98 + Math.random() * 22},38%,${l}%,0.5)`;
+      c.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 3, 2 + Math.random() * 3);
+    }
+  }, [90, 90]);
+  // 底图：OSM 未标注用途的土地在这一带基本是农田与绿地
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), new THREE.MeshStandardMaterial({ map: grassTex, color: '#b9c98f', roughness: 1, depthWrite: false }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  ground.renderOrder = -10;
+  scene.add(ground);
+
+  // 远处农田色块
+  const fieldCols = ['#7fa64e', '#9bb35a', '#6f9a48', '#b7b871', '#5f8f46', '#a3a860'];
+  const fieldGeo = new THREE.PlaneGeometry(1, 1); fieldGeo.rotateX(-Math.PI / 2);
+  const fields = new THREE.InstancedMesh(fieldGeo, new THREE.MeshStandardMaterial({ roughness: 1 }), 90);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s3 = new THREE.Vector3(), p3 = new THREE.Vector3(), col = new THREE.Color();
+  const up = new THREE.Vector3(0, 1, 0);
+  for (let i = 0; i < 90; i++) {
+    const a = rand() * Math.PI * 2, r = 2600 + rand() * 2600; // 只在 OSM 数据范围之外
+    p3.set(CENTER.x + Math.cos(a) * r, 0.03, CENTER.z + Math.sin(a) * r);
+    q.setFromAxisAngle(up, (rand() < 0.5 ? 0 : Math.PI / 2) + 0.12);
+    s3.set(180 + rand() * 380, 1, 120 + rand() * 260);
+    fields.setMatrixAt(i, m4.compose(p3, q, s3));
+    fields.setColorAt(i, col.set(fieldCols[(rand() * fieldCols.length) | 0]));
+  }
+  fields.receiveShadow = true;
+  fields.material.depthWrite = false;
+  fields.renderOrder = -9.5;
+  scene.add(fields);
+
+  const nearStand = (x, z, pad = 0) => stands.some((s) => (s.center.x - x) ** 2 + (s.center.z - z) ** 2 < (s.radius + pad) ** 2);
+
+  // ── 远处城镇建筑 ──
+  const B = 520;
+  const bMat = lampMat('#d4d6da', '#ffcf8a', 0.22, { roughness: 0.8 });
+  const blocks = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), bMat, B);
+  for (let i = 0; i < B; i++) {
+    let x, z, tries = 0;
+    do {
+      const a = rand() * Math.PI * 2, r = 2550 + rand() * 2400; // 远景轮廓，只放在 OSM 数据范围之外
+      x = CENTER.x + Math.cos(a) * r; z = CENTER.z + Math.sin(a) * r;
+    } while (false);
+    const h = rand() < 0.85 ? 10 + rand() * 26 : 45 + rand() * 60;
+    p3.set(x, h / 2, z); q.setFromAxisAngle(up, 0.12); s3.set(26 + rand() * 60, h, 18 + rand() * 40);
+    blocks.setMatrixAt(i, m4.compose(p3, q, s3));
+    blocks.setColorAt(i, col.setHSL(0.08 + rand() * 0.06, 0.08, 0.72 + rand() * 0.2));
+  }
+  blocks.castShadow = true;
+  scene.add(blocks);
+
+  // ── 赛道照明灯杆 ──
+  const poles = [];
+  for (let i = 0; i < track.N; i += 34) {
+    for (const side of [1, -1]) {
+      if (side < 0 && track.pitZone(i)) continue;
+      const off = HW + 9 + (side > 0 ? track.gwL[i] : track.gwR[i]);
+      const x = track.pts[i].x + track.nor[i].x * off * side, z = track.pts[i].z + track.nor[i].z * off * side;
+      if (nearStand(x, z, -14)) continue;
+      poles.push(x, z, Math.atan2(-track.nor[i].x * side, -track.nor[i].z * side));
+    }
+  }
+  const nP = poles.length / 3, PH = 26;
+  const poleMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.28, 0.5, PH, 6), std('#9aa0a8', { metalness: 0.6, roughness: 0.4 }, 0.3), nP);
+  const headGeo = new THREE.BoxGeometry(4.2, 1.2, 0.8); headGeo.translate(0, 0, 0.6);
+  const headMesh = new THREE.InstancedMesh(headGeo, lampMat('#f5f5f5', '#fff6de', 6), nP);
+  const gp = [];
+  for (let i = 0; i < nP; i++) {
+    const x = poles[i * 3], z = poles[i * 3 + 1];
+    p3.set(x, PH / 2, z); q.identity(); s3.set(1, 1, 1);
+    poleMesh.setMatrixAt(i, m4.compose(p3, q, s3));
+    p3.set(x, PH, z); q.setFromAxisAngle(up, poles[i * 3 + 2]);
+    headMesh.setMatrixAt(i, m4.compose(p3, q, s3));
+    gp.push(x, PH, z);
+  }
+  poleMesh.castShadow = true;
+  scene.add(poleMesh, headMesh);
+  const gg = new THREE.BufferGeometry();
+  gg.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3));
+  const glow = new THREE.Points(gg, new THREE.PointsMaterial({
+    map: glowTexture(), size: 46, sizeAttenuation: true, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false, color: '#fff2d2', fog: false,
+  }));
+  scene.add(glow);
+  env.glows.push(glow);
+
+  // ── 光源 ──
+  env.hemi = new THREE.HemisphereLight('#cfe6ff', '#6b7a55', 1.1);
+  env.sun = new THREE.DirectionalLight('#fff4e0', 3);
+  env.sun.castShadow = true;
+  env.sun.shadow.mapSize.set(4096, 4096);
+  const sc = env.sun.shadow.camera;
+  sc.left = -1250; sc.right = 1250; sc.top = 1250; sc.bottom = -1250; sc.near = 100; sc.far = 4200;
+  env.sun.shadow.bias = -0.0004; env.sun.shadow.normalBias = 0.6;
+  env.sun.target.position.copy(CENTER);
+  scene.add(env.hemi, env.sun, env.sun.target);
+
+  scene.fog = new THREE.Fog('#cfe4f5', 5200, 14000);
+  env.sky = sky;
+  env.center = CENTER;
+  return env;
+}
+
+const C = (h) => new THREE.Color(h);
+const DAY = {
+  top: C('#2f86e0'), bottom: C('#cfe6f7'), sun: C('#fff3dc'), hemiSky: C('#d6eaff'), hemiGround: C('#6f7d58'),
+  sunPos: new THREE.Vector3(900, 1500, 700),
+};
+const NIGHT = {
+  top: C('#02040c'), bottom: C('#111d38'), sun: C('#8fb0ff'), hemiSky: C('#22355e'), hemiGround: C('#06080d'),
+  sunPos: new THREE.Vector3(-700, 1400, -500),
+};
+
+/** t: 0 = 白天, 1 = 黑夜 */
+export function applyTime(env, scene, t) {
+  const L = THREE.MathUtils.lerp;
+  env.skyU.top.value.lerpColors(DAY.top, NIGHT.top, t);
+  env.skyU.bottom.value.lerpColors(DAY.bottom, NIGHT.bottom, t);
+  // 黄昏暖色
+  const dusk = Math.sin(t * Math.PI);
+  env.skyU.bottom.value.lerp(C('#ff9a5c'), dusk * 0.55);
+  scene.fog.color.copy(env.skyU.bottom.value);
+  env.sun.color.lerpColors(DAY.sun, NIGHT.sun, t).lerp(C('#ff8a4a'), dusk * 0.5);
+  env.sun.intensity = L(3.0, 0.28, t);
+  env.sun.position.copy(env.center).add(new THREE.Vector3().lerpVectors(DAY.sunPos, NIGHT.sunPos, t));
+  env.hemi.color.lerpColors(DAY.hemiSky, NIGHT.hemiSky, t);
+  env.hemi.groundColor.lerpColors(DAY.hemiGround, NIGHT.hemiGround, t);
+  env.hemi.intensity = L(1.15, 0.32, t);
+  env.stars.material.opacity = THREE.MathUtils.smoothstep(t, 0.6, 1);
+}
