@@ -1,9 +1,10 @@
 // 看台：位置与尺寸全部来自 OpenStreetMap 的真实轮廓（OSM_STANDS），座位按真实尺寸排布。
-//   座位间距 0.55 m、排距 0.85 m；每 28 个座位设一条 1.1 m 宽的过道，过道之间为一个分区。
+//   座位间距 0.55 m、排距 0.85 m；每 28 个座位设一条 1.1 m 宽的过道（过道只是建模，不代表官方分区）。
+// 票区只用官方名称（A铂金 / A上 / A下 / B / H/K / E）；排号、座号是模型内按位置的计数，不是票面座号。
 // 座位直接放在世界坐标里，点选时按“射线 ∩ 座位斜面”解析出排号与座号，不必逐个检测几万个座位。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { STANDS } from './data.js';
+import { STANDS, TURNS } from './data.js';
 import { OSM_STANDS } from './osm-data.js';
 import { V, rng, std, floodlit, lampMat, extrudeProfile } from './util.js';
 
@@ -62,7 +63,7 @@ function layoutRows(spec, part) {
 }
 
 function buildSeatPart(spec, part, pi, ctx) {
-  const { mats, seats, base, rot, partOf, blocks, blockMap, single } = ctx;
+  const { mats, seats, base, rot, partOf, blocks, blockMap } = ctx;
   const { front, f, rotY } = frameOf(part);
   const G = new THREE.Group();
   G.position.copy(front); G.rotation.y = rotY;
@@ -114,33 +115,36 @@ function buildSeatPart(spec, part, pi, ctx) {
   const rem = slotsTotal % per;
   if (rem > 0 && rem < 8 && slotsTotal > per) nSlots = slotsTotal - rem; // 太窄的零头不设座
   const x0 = -(nSlots * PITCH) / 2;
-  const small = L < 50;
   const rails = ctx.rails;
+  // 看台哪一端靠近 1 号弯：用于按官方座位图放置铂金区
+  const [, t1x, t1n] = TURNS.find((tt) => tt[0] === 1);
+  const t1 = V(t1x, t1n);
+  const endPlus = new THREE.Vector3(L / 2, 0, 0).applyMatrix4(G.matrixWorld), endMinus = new THREE.Vector3(-L / 2, 0, 0).applyMatrix4(G.matrixWorld);
+  const plusIsT1 = endPlus.distanceTo(t1) < endMinus.distanceTo(t1);
 
   const pick = { inv: G.matrixWorld.clone().invert(), tiers: [] };
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion().setFromAxisAngle(UP, rotY), v = new THREE.Vector3();
   const rand = ctx.rand;
   tierInfo.forEach((ti, k) => {
     const t = ti.t;
-    const halfRows = Math.ceil(ti.count / 2);
     const index = new Int32Array(ti.count * nSlots).fill(-1);
     const r0 = rows[ti.first];
     pick.tiers.push({ z0: r0.z, y0: r0.y + 0.45, k: ti.rise / ROW_D, rows: ti.count, nSlots, x0, index });
     for (let r = 0; r < ti.count; r++) {
       const row = rows[ti.first + r];
-      const band = single && r >= halfRows ? 1 : 0;
-      const suffix = t.suffix ?? (single ? 'AB'[band] : '');
+      let num = 0; // 面向赛道时从左往右数
       for (let s = 0; s < nSlots; s++) {
-        const within = s % per;
-        if (within >= BLOCK) continue;
-        const bi = Math.floor(s / per);
-        const code = small ? part.code + suffix : spec.code === part.code ? `${part.code}${bi + 1}${suffix}` : `${part.code}-${bi + 1}${suffix}`;
-        const key = pi + ':' + k + ':' + code;
+        if (s % per >= BLOCK) continue;
+        num++;
+        // 票区：铂金区按“距 1 号弯一端的比例”判定，其余为该层的票区
+        const fromT1 = plusIsT1 ? 1 - (s + 0.5) / nSlots : (s + 0.5) / nSlots;
+        const c = t.center;
+        const zone = c && fromT1 >= c.fromT1 && fromT1 <= c.toT1 ? c.zone : t.zone;
+        const side = c && zone !== c.zone ? (fromT1 < c.fromT1 ? 't1' : 't16') : '';
+        const key = pi + ':' + k + ':' + zone + ':' + side;
         let b = blockMap.get(key);
         if (!b) {
-          const bx = (s + BLOCK / 2) / nSlots;
-          const zone = t.center && bx >= t.center.from && bx <= t.center.to ? t.center.zone : t.zone;
-          b = { idx: blocks.length, code, tier: k, band, zone, shade: (blocks.length + band) % 2, count: 0, sum: new THREE.Vector3(), top: 0, part: pi };
+          b = { idx: blocks.length, code: spec.zones[zone].name, side, tier: k, zone, count: 0, sum: new THREE.Vector3(), top: 0, part: pi };
           blockMap.set(key, b);
           blocks.push(b);
         }
@@ -148,7 +152,7 @@ function buildSeatPart(spec, part, pi, ctx) {
         v.set(lx, row.y, row.z).applyMatrix4(G.matrixWorld);
         b.count++; b.sum.add(v); b.top = Math.max(b.top, v.y);
         index[r * nSlots + s] = seats.length;
-        seats.push({ zone: b.zone, block: b.idx, shade: b.shade, row: r + 1 - (band ? halfRows : 0), num: within + 1, tier: k, part: pi, j: rand() });
+        seats.push({ zone, block: b.idx, row: r + 1, num, tier: k, part: pi, j: rand() });
         base.push(v.x, v.y, v.z);
         rot.push(rotY);
       }
@@ -212,7 +216,7 @@ function buildSeatStand(spec, mats, seatGeo, common) {
   const g = new THREE.Group();
   const ctx = {
     mats, seats: [], base: [], rot: [], partOf: [], blocks: [], blockMap: new Map(),
-    single: spec.tiers.length === 1, rand: rng(spec.id.charCodeAt(0) * 7919),
+    rand: rng(spec.id.charCodeAt(0) * 7919),
     rails: railBatcher(mats.steel), glassPanels: [], hitboxes: common.hitboxes, hitMat: common.hitMat, colorMat: common.colorMat,
   };
   const parts = OSM_STANDS[spec.id];
@@ -280,9 +284,9 @@ export function seatMatrix(s, i, scale, lift, out) {
 export const seatWorld = (s, i) => new THREE.Vector3(s.base[i * 3], s.base[i * 3 + 1], s.base[i * 3 + 2]);
 export const seatFacing = (s, i) => s.parts[s.seats[i].part].f;
 
-/** 座位颜色 = 票价分区颜色，相邻分区深浅交替以便分辨 */
+/** 座位颜色 = 官方票区颜色（带一点随机明暗，避免看起来像一整块色板） */
 export function seatColor(spec, s, out = new THREE.Color()) {
-  return out.set(spec.zones[s.zone].color).offsetHSL(0, 0, (s.shade ? 0.075 : -0.055) + (s.j - 0.5) * 0.05);
+  return out.set(spec.zones[s.zone].color).offsetHSL(0, 0, (s.j - 0.5) * 0.06);
 }
 
 // ── 草地看台：按真实轮廓堆出草坡，四周围栏，坡上散布观众 ──
@@ -363,6 +367,20 @@ function buildGrass(spec, mats, common) {
   return { g, parts: [{ f, rotY, front: V(part.front[0], part.front[1]), L: part.L, D: part.D, H: 3 }] };
 }
 
+/** 没有精确轮廓的票区（C 草地）：只放一个可点击的位置标记，不建模 */
+function buildMarker(spec, common) {
+  const g = new THREE.Group();
+  const at = V(spec.approx[0], spec.approx[1]);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(16, 18, 48), new THREE.MeshBasicMaterial({ color: spec.color, transparent: true, opacity: 0.85, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.set(at.x, 0.3, at.z); ring.renderOrder = -0.5;
+  g.add(ring);
+  const hb = new THREE.Mesh(new THREE.CylinderGeometry(18, 18, 8, 16), common.hitMat);
+  hb.position.set(at.x, 4, at.z); hb.visible = false; hb.userData.standId = spec.id;
+  g.add(hb); hb.updateMatrixWorld(true); common.hitboxes.push(hb);
+  const f = new THREE.Vector3(-1, 0, 0);
+  return { g, parts: [{ f, rotY: 0, front: at.clone(), L: 60, D: 0, H: 2 }] };
+}
+
 function buildClub(spec, common) {
   const g = new THREE.Group();
   const part = OSM_STANDS[spec.id][0];
@@ -398,8 +416,8 @@ export function buildStands(scene) {
   const seatGeo = seatGeometry();
   const out = [];
   for (const spec of STANDS) {
-    if (!OSM_STANDS[spec.id]) { console.warn('看台缺少 OSM 轮廓：', spec.id); continue; }
-    const s = spec.type === 'seats' ? buildSeatStand(spec, mats, seatGeo, common) : spec.type === 'grass' ? buildGrass(spec, mats, common) : buildClub(spec, common);
+    if (!OSM_STANDS[spec.id] && !spec.approx) { console.warn('看台缺少 OSM 轮廓：', spec.id); continue; }
+    const s = spec.approx ? buildMarker(spec, common) : spec.type === 'seats' ? buildSeatStand(spec, mats, seatGeo, common) : spec.type === 'grass' ? buildGrass(spec, mats, common) : buildClub(spec, common);
     s.spec = spec;
     scene.add(s.g);
     // 整体框架：中心、朝向、跨度

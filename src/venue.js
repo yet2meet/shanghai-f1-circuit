@@ -1,5 +1,5 @@
 // 赛道边设施：维修通道（OSM 真实线形）、维修墙与车队指挥台、车库门与车队色带、领奖台、
-// 起终点线与发车格、发车灯架、裁判岗亭、刹车距离牌。
+// 发车线与发车格、发车灯架、裁判岗亭、刹车距离牌。
 // 建筑本体（维修楼、主看台顶棚、“翼”形结构、围场行宫等）由 osm.js 按 OSM 真实轮廓生成。
 import * as THREE from 'three';
 import { TEAM_COLORS, TURNS } from './data.js';
@@ -9,8 +9,9 @@ import { asGround } from './osm.js';
 import { HW } from './track.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
-// 起终点线：取 bacinger/f1-circuits 数据的起点（该数据集以起终点线为第一个点）
-const START_LINE = [-498.9, 306.8];
+// 发车点：按 2026 官方座位图量取 —— 位于主看台中段偏 16 号弯一侧，约在看台全长距 1 号弯一端 62% 处
+// （主看台在 OSM 中的范围为 n = -124 … 268，换算得 n ≈ 25）。官方图为示意图，误差约 ±30 m。
+const START_LINE = [-500, 25];
 
 function numberTex(text, bg, fg) {
   return canvasTex(128, 96, (c, w, h) => {

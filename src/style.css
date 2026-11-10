@@ -288,3 +288,6 @@ body[data-mode='seats'] .panel.left { transform: translateX(calc(-100% - 40px));
 .footnote a { color: inherit; }
 .osm-credit { position: fixed; right: 12px; bottom: 6px; z-index: 3; font-size: 10px; color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); text-decoration: none; }
 @media (max-width: 860px) { .osm-credit { bottom: auto; top: calc(max(10px, env(safe-area-inset-top)) + 186px); left: 12px; right: auto; } }
+
+.chips.wide { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.seat-note { font-size: 11px; line-height: 1.5; color: var(--sub); margin: 8px 2px 0; }

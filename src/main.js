@@ -94,9 +94,45 @@ const MAX_SEATS = 6;
 let fly = null;
 const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 function flyTo(pos, target, dur = 1.6) {
+  exitSeatCam();
   fly = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos.clone(), t1: target.clone(), t: 0, dur };
   controls.enabled = false;
 }
+// ───────────────────────── 座位视角：原地环顾 ─────────────────────────
+// 相机固定在座位的视线点上，拖动只改变视线方向；滚轮 / ± 按钮改变视野角度（望远），不移动相机。
+let seatCam = null; // { eye, fov }：进入座位视角前的视野角度，退出时恢复
+const ORBIT_DEFAULTS = { minDistance: controls.minDistance, minPolarAngle: 0, maxPolarAngle: controls.maxPolarAngle, enablePan: true, enableZoom: true };
+const SEAT_LOOK = 0.1; // 视线目标点离眼睛的距离（米），只用来确定朝向
+function enterSeatCam(eye) {
+  seatCam = { eye: eye.clone(), fov: camera.fov };
+  Object.assign(controls, { minDistance: 0.01, minPolarAngle: 0.05, maxPolarAngle: Math.PI - 0.05, enablePan: false, enableZoom: false });
+  applyViewOffset();
+}
+function exitSeatCam() {
+  if (!seatCam) return;
+  Object.assign(controls, ORBIT_DEFAULTS);
+  camera.fov = seatCam.fov;
+  camera.updateProjectionMatrix();
+  seatCam = null;
+  applyViewOffset();
+}
+function setSeatFov(fov) {
+  camera.fov = THREE.MathUtils.clamp(fov, 12, 80);
+  camera.updateProjectionMatrix();
+}
+/** 每帧把相机钉回座位，只保留拖动产生的视线方向 */
+const _dir = new THREE.Vector3();
+function pinSeatCam() {
+  _dir.subVectors(controls.target, camera.position).normalize();
+  camera.position.copy(seatCam.eye);
+  controls.target.copy(seatCam.eye).addScaledVector(_dir, SEAT_LOOK);
+}
+canvas.addEventListener('wheel', (e) => {
+  if (!seatCam) return;
+  e.preventDefault();
+  setSeatFov(camera.fov * Math.exp(e.deltaY * 0.0012));
+}, { passive: false });
+
 function viewFor(s, mode) {
   const up = new THREE.Vector3(0, 1, 0);
   const right = new THREE.Vector3().crossVectors(s.f, up);
@@ -129,7 +165,9 @@ function paintSeat(s, i) {
 function seatWorld(s, i) {
   return seatPos(s, i);
 }
-const seatName = (s, seat) => `${s.blocks[seat.block].code} 区 · ${seat.row} 排 ${seat.num} 座`;
+// 排号、座号是模型内按位置的计数（每层从前往后数排，面向赛道从左往右数座），不是票面座号
+const seatName = (s, seat) => `${s.spec.zones[seat.zone].name} · 第 ${seat.row} 排 · 左起第 ${seat.num} 座`;
+const sideName = (b) => (b.side === 't1' ? '（1 号弯一侧）' : b.side === 't16' ? '（16 号弯一侧）' : '');
 const isMobile = () => innerWidth <= 860;
 
 function blockView(s, b) {
@@ -141,7 +179,6 @@ function blockView(s, b) {
 // ───────────────────────── UI：列表 ─────────────────────────
 const minPrice = (spec) => Math.min(...Object.values(spec.zones).map((z) => z.price));
 const mainColor = (spec) => spec.color || Object.values(spec.zones).slice(-1)[0].color;
-const anyEstimated = (spec) => Object.values(spec.zones).some((z) => !z.verified);
 const X_ICON = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>';
 
 const listEl = $('#listItems');
@@ -152,7 +189,7 @@ STANDS.forEach((spec) => {
   b.dataset.id = spec.id;
   b.innerHTML = `<div class="badge" style="background:${mainColor(spec)}">${spec.code}</div>
     <div class="item-main"><b>${spec.name}</b><span>${spec.turns}</span></div>
-    <div class="item-price">${fmtPrice(minPrice(spec))}<small>${multi ? '起' : ''}${anyEstimated(spec) ? ' 参考' : ' 报道价'}</small></div>`;
+    <div class="item-price">${fmtPrice(minPrice(spec))}<small>${multi ? '起 · ' : ''}三日票</small></div>`;
   b.onclick = () => selectStand(spec.id);
   listEl.appendChild(b);
 });
@@ -175,8 +212,8 @@ TURNS.forEach(([n, x, y]) => {
   labelsEl.appendChild(el);
   labels.push({ el, pos: V(x, y, 14), kind: 'turn', ax: -0.5, ay: -0.5, dy: 0 });
 });
-// 分区标签（进入选座后显示）
-stands.forEach((s) => s.blocks?.forEach((b) => {
+// 票区标签（进入选座后显示；只有一个票区的看台不重复标注）
+stands.forEach((s) => s.blocks && new Set(s.blocks.map((b) => b.zone)).size > 1 && s.blocks.forEach((b) => {
   const el = document.createElement('div');
   el.className = 'sec off';
   el.style.setProperty('--c', s.spec.zones[b.zone].color);
@@ -246,9 +283,9 @@ function updateLabels() {
 // ───────────────────────── UI：详情面板 ─────────────────────────
 const detail = $('#detail');
 function zoneRow(z) {
-  const sub = z.note || (z.day ? `单日票 ${fmtPrice(z.day)} 起` : '');
+  const sub = z.day ? `周五 ${fmtPrice(z.day.fri)} · 周六 ${fmtPrice(z.day.sat)} · 周日 ${fmtPrice(z.day.sun)}` : z.note || '';
   return `<div class="zone"><i style="background:${z.color}"></i>
-    <div class="zone-main"><b>${z.name}</b><em class="tag ${z.verified ? 'ok' : ''}">${z.verified ? '媒体报道价' : '参考估价'}</em><span>${sub}</span></div>
+    <div class="zone-main"><b>${z.name}</b><em class="tag ok">官方票价</em><span>${sub}</span></div>
     <div class="zone-price">${fmtPrice(z.price)}</div></div>`;
 }
 function renderDetail() {
@@ -268,23 +305,23 @@ function renderDetail() {
         <div>${seatName(p.stand, seat)}<small>${z.name} · 三日票</small></div><b>${fmtPrice(z.price)}</b>
         <button data-act="remove" data-key="${p.stand.spec.id}:${p.idx}" aria-label="移除">${X_ICON}</button></div>`;
     }).join('');
-    // 分区按层 / 前后段分组
-    const groups = new Map();
-    s.blocks.forEach((b) => {
-      const name = spec.tiers.length > 1 ? (b.tier ? '上层' : '下层') : (b.band ? '后段 · 高排' : '前段 · 低排');
-      if (!groups.has(name)) groups.set(name, []);
-      groups.get(name).push(b);
-    });
-    const order = [...groups.entries()].reverse(); // 上层 / 后段在前，与看台朝向一致
-    const sections = order.map(([name, list]) => `<div class="sec-title">${name} · ${list.length} 个分区</div>
-      <div class="chips">${list.map((b) => `<button class="chip" data-act="block" data-b="${b.idx}" style="--c:${spec.zones[b.zone].color}">${b.code}</button>`).join('')}</div>`).join('');
+    // 票区快速定位：只列官方票区（A 看台的 A上 被铂金区分成 1 号弯一侧和 16 号弯一侧两段）
+    const zoneCount = new Set(s.blocks.map((b) => b.zone)).size;
+    const seen = new Set();
+    const chipList = s.blocks.filter((b) => { const k = b.zone + b.side; if (seen.has(k)) return false; seen.add(k); return true; })
+      .sort((x, y) => y.tier - x.tier);
+    const sections = zoneCount > 1
+      ? `<div class="sec-title">官方票区 · 点击定位</div>
+        <div class="chips wide">${chipList.map((b) => `<button class="chip" data-act="block" data-b="${b.idx}" style="--c:${spec.zones[b.zone].color}">${b.code}${sideName(b)}</button>`).join('')}</div>`
+      : `<div class="sec-title">官方票区</div><p class="d-desc" style="margin:0 2px 12px">整座看台为同一票区：${Object.values(spec.zones)[0].name}。官方未公布更细的分区编号。</p>`;
     detail.innerHTML = `<div class="d-scroll">${head}
       <div class="legend" style="margin-top:16px">
         ${Object.values(spec.zones).map((z) => `<span><i style="background:${z.color}"></i>${z.name} ${fmtPrice(z.price)}</span>`).join('')}
       </div>
       ${sections}
       <div class="sec-title" style="margin-top:14px">已标记座位（${picked.length}/${MAX_SEATS}）</div>
-      ${rows || '<div class="cart-empty">点击分区编号可飞到该区<br/>点击座位标记，双击直接进入座位视角</div>'}
+      ${rows || '<div class="cart-empty">点击座位标记，双击直接进入座位视角</div>'}
+      <p class="seat-note">排号、座号为模型内按位置的计数（从前往后数排、面向赛道从左往右数座），不是票面座号。</p>
       <div class="actions">
         <button class="btn primary" data-act="seatview" ${picked.length ? '' : 'disabled'}>座位视角</button>
         <div class="btn-row">
@@ -296,8 +333,8 @@ function renderDetail() {
 
   const stats = spec.type === 'seats'
     ? `<div class="stat"><small>入口</small><b>${spec.gate}</b></div>
-       <div class="stat"><small>容量（约）</small><b>${spec.capacity.toLocaleString()}</b></div>
-       <div class="stat"><small>分区</small><b>${s.blocks.length} 个</b></div>`
+       <div class="stat"><small>模型座位</small><b>${s.seats.length.toLocaleString()}</b></div>
+       <div class="stat"><small>官方票区</small><b>${new Set(s.blocks.map((b) => b.zone)).size} 个</b></div>`
     : `<div class="stat"><small>入口</small><b>${spec.gate}</b></div>
        <div class="stat"><small>类型</small><b>${spec.type === 'grass' ? '草地' : '款待'}</b></div>
        <div class="stat"><small>座位</small><b>${spec.type === 'grass' ? '不对号' : '包厢'}</b></div>`;
@@ -328,7 +365,7 @@ detail.addEventListener('click', (e) => {
 /** 手机端底部有面板时，把画面整体上移，避免看台被面板挡住 */
 function applyViewOffset() {
   const w = innerWidth, h = innerHeight;
-  if (isMobile() && state.mode !== 'overview' && w && h) camera.setViewOffset(w, h, 0, Math.round(h * 0.2), w, h);
+  if (isMobile() && state.mode !== 'overview' && !seatCam && w && h) camera.setViewOffset(w, h, 0, Math.round(h * 0.2), w, h);
   else camera.clearViewOffset();
 }
 function syncList() {
@@ -337,7 +374,7 @@ function syncList() {
   mm.marks.forEach((g) => g.classList.toggle('on', state.stand?.spec.id === g.dataset.id));
   listEl.querySelectorAll('.item').forEach((el) => el.classList.toggle('active', state.stand?.spec.id === el.dataset.id));
   $('#hint').textContent = state.mode === 'seats'
-    ? '滚轮放大 · 点击分区或座位 · 双击进入座位视角 · Esc 返回'
+    ? '滚轮放大 · 点击票区或座位 · 双击进入座位视角 · Esc 返回'
     : '拖动旋转 · 滚轮缩放 · 右键平移 · 点击看台探索';
 }
 
@@ -385,8 +422,11 @@ function toggleSeat(key) {
 function seatView(s, idx) {
   const p = seatWorld(s, idx);
   const eye = p.clone().add(new THREE.Vector3(0, 1.25, 0)); // 坐姿视线高度
-  flyTo(eye, p.clone().addScaledVector(seatFacing(s, idx), 14).add(new THREE.Vector3(0, -1.6, 0)), 1.4);
-  toast('座位视角 · 拖动环顾赛道');
+  // 视线：朝向赛道、略微向下（与看向 14 m 外、低 2.85 m 的点同一方向）
+  const dir = seatFacing(s, idx).clone().multiplyScalar(14).add(new THREE.Vector3(0, -2.85, 0)).normalize();
+  flyTo(eye, eye.clone().addScaledVector(dir, SEAT_LOOK), 1.4);
+  enterSeatCam(eye);
+  toast(isMobile() ? '座位视角 · 拖动环顾 · ± 望远' : '座位视角 · 拖动环顾 · 滚轮望远');
 }
 
 // ───────────────────────── 指针拾取 ─────────────────────────
@@ -443,6 +483,7 @@ function pick(x, y) {
 // ───────────────────────── 工具条 / 主题 ─────────────────────────
 function dolly(k) {
   if (fly) return;
+  if (seatCam) return setSeatFov(camera.fov * (k < 1 ? 0.7 : 1.4));
   const dir = new THREE.Vector3().subVectors(camera.position, controls.target);
   const len = THREE.MathUtils.clamp(dir.length() * k, controls.minDistance, controls.maxDistance);
   flyTo(controls.target.clone().add(dir.setLength(len)), controls.target, 0.45);
@@ -499,7 +540,9 @@ function resize() {
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(w, h);
   camera.aspect = w / h;
+  const seatFov = seatCam ? camera.fov : null;
   updateHome();
+  if (seatCam) { seatCam.fov = camera.fov; camera.fov = seatFov; }
   applyViewOffset();
   camera.updateProjectionMatrix();
 }
@@ -521,7 +564,10 @@ function frame() {
     controls.target.lerpVectors(fly.t0, fly.t1, e);
     camera.lookAt(controls.target);
     if (fly.t >= 1) { fly = null; controls.enabled = true; }
-  } else controls.update();
+  } else {
+    controls.update();
+    if (seatCam) pinSeatCam();
+  }
   if (pointer && !fly && !down?.dragging) pick(pointer.x, pointer.y);
   cars.update(dt);
   composer.render();
@@ -541,4 +587,4 @@ clock.getDelta();
 flyTo(HOME.pos, HOME.target, 2.8); // 开场镜头
 requestAnimationFrame(frame);
 
-window.__app = { state, camera, controls, scene, renderer, stands, selectStand, enterSeats, goHome, setNight, toggleSeat, seatView, track };
+window.__app = { state, camera, controls, scene, renderer, stands, selectStand, enterSeats, goHome, setNight, toggleSeat, seatView, track, dolly, get seatCam() { return seatCam; } };
