@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { TRACK_POINTS } from './data.js';
 import { V, makePath, ribbon, wall, smooth, std, canvasTex, floodlit } from './util.js';
 import { OSM_PIT } from './osm-data.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { asGround } from './osm.js';
 
 export const HW = 7.5; // 赛道半宽（真实路面宽约 13–15 m）
@@ -147,14 +148,61 @@ export function buildTrack(scene) {
   }, [1, 1]);
   const wallMat = floodlit(new THREE.MeshStandardMaterial({ map: adTex, roughness: 0.6, side: THREE.DoubleSide }), 0.6);
   const wl = new THREE.Mesh(wall(path, { off: (i) => HW + 6 + gwL[i], h: 1.3, to: N, uv: 64 }), wallMat);
-  const wr = new THREE.Mesh(wall(path, { off: (i) => -(HW + 6 + gwR[i]), h: 1.3, to: N, skip: pitZone, uv: 64 }), wallMat);
+  // 右侧护墙从赛道看过去方向相反，贴图反向，文字才不会镜像
+  const wr = new THREE.Mesh(wall(path, { off: (i) => -(HW + 6 + gwR[i]), h: 1.3, to: N, skip: pitZone, uv: -64 }), wallMat);
   wl.castShadow = wr.castShadow = true;
   g.add(wl, wr);
-  // 防护网
-  const fenceMat = new THREE.MeshStandardMaterial({ color: '#aeb6c2', transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false });
-  g.add(new THREE.Mesh(wall(path, { off: (i) => HW + 6.2 + gwL[i], h: 3.2, y: 1.3, to: N }), fenceMat));
-  g.add(new THREE.Mesh(wall(path, { off: (i) => -(HW + 6.2 + gwR[i]), h: 3.2, y: 1.3, to: N, skip: pitZone }), fenceMat));
+  // 防护网：菱形金属网纹理（每米 4 格）+ 每 4 m 一根立柱 + 顶部钢缆
+  const meshTex = fenceTexture();
+  const fenceMat = new THREE.MeshStandardMaterial({ color: '#c3c9d1', alphaMap: meshTex, transparent: true, side: THREE.DoubleSide, depthWrite: false, metalness: 0.6, roughness: 0.4 });
+  const FH = 3.4;
+  g.add(new THREE.Mesh(wall(path, { off: (i) => HW + 6.2 + gwL[i], h: FH, y: 1.3, to: N, uv: 1 }), fenceMat));
+  g.add(new THREE.Mesh(wall(path, { off: (i) => -(HW + 6.2 + gwR[i]), h: FH, y: 1.3, to: N, skip: pitZone, uv: 1 }), fenceMat));
+  const postSpots = [];
+  const step = Math.max(1, Math.round(4 / (path.total / N)));
+  for (let k = 0; k < N; k += step) {
+    for (const side of [1, -1]) {
+      if (side < 0 && pitZone(k)) continue;
+      const off = side * (HW + 6.3 + (side > 0 ? gwL[k] : gwR[k]));
+      postSpots.push(pts[k].x + path.nor[k].x * off, pts[k].z + path.nor[k].z * off, Math.atan2(path.tan[k].x, path.tan[k].z) + (side > 0 ? 0 : Math.PI));
+    }
+  }
+  // 立柱带一段向赛道内侧倾斜的顶部（真实防护网的“鹅颈”造型）
+  const postGeo = mergeGeometries([
+    new THREE.BoxGeometry(0.12, FH + 1.3, 0.12).translate(0, (FH + 1.3) / 2, 0),
+    new THREE.BoxGeometry(0.1, 0.1, 1.0).rotateX(-0.6).translate(0, FH + 1.55, -0.4),
+  ]);
+  const posts = new THREE.InstancedMesh(postGeo, std('#8d949c', { roughness: 0.4, metalness: 0.7 }, 0.3), postSpots.length / 3);
+  const pm = new THREE.Matrix4(), pq = new THREE.Quaternion(), pp = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), upv = new THREE.Vector3(0, 1, 0);
+  for (let i = 0; i < postSpots.length / 3; i++) {
+    pq.setFromAxisAngle(upv, postSpots[i * 3 + 2] + Math.PI / 2);
+    posts.setMatrixAt(i, pm.compose(pp.set(postSpots[i * 3], 0, postSpots[i * 3 + 1]), pq, one));
+  }
+  posts.castShadow = true;
+  g.add(posts);
+  // 轮胎防护带：缓冲区较宽（弯道外侧）的护墙前，一道包着输送带的轮胎墙（黑红相间）
+  const beltTex = canvasTex(256, 32, (c, w, h) => {
+    for (let i = 0; i < 8; i++) { c.fillStyle = i % 2 ? '#d61f26' : '#16171a'; c.fillRect((i * w) / 8, 0, w / 8, h); }
+    c.fillStyle = 'rgba(255,255,255,0.08)'; c.fillRect(0, 2, w, 2);
+  }, [1, 1]);
+  const beltMat = floodlit(new THREE.MeshStandardMaterial({ map: beltTex, roughness: 0.8, side: THREE.DoubleSide }), 0.5);
+  const beltL = (k) => gwL[k] < 8, beltR = (k) => gwR[k] < 8 || pitZone(k);
+  g.add(new THREE.Mesh(wall(path, { off: (i) => HW + 5.2 + gwL[i], h: 1.1, to: N, skip: beltL, uv: 12 }), beltMat));
+  g.add(new THREE.Mesh(wall(path, { off: (i) => -(HW + 5.2 + gwR[i]), h: 1.1, to: N, skip: beltR, uv: 12 }), beltMat));
+  const topMat = std('#202226', { roughness: 0.9 }, 0.1);
+  g.add(new THREE.Mesh(ribbon(path, { offA: (i) => HW + 6 + gwL[i], offB: (i) => HW + 5.2 + gwL[i], y: 1.1, to: N }), topMat));
 
   scene.add(g);
   return track;
+}
+
+/** 菱形金属网的透明度贴图：wall({ uv: 1 }) 时 u 以米计，每米 4 格；v 方向覆盖整个网高 */
+function fenceTexture() {
+  const tex = canvasTex(64, 64, (c, w, h) => {
+    c.fillStyle = '#000'; c.fillRect(0, 0, w, h);
+    c.strokeStyle = '#fff'; c.lineWidth = 3;
+    c.beginPath(); c.moveTo(0, 0); c.lineTo(w, h); c.moveTo(w, 0); c.lineTo(0, h); c.stroke();
+  }, [4, 14]);
+  tex.colorSpace = THREE.NoColorSpace;
+  return tex;
 }

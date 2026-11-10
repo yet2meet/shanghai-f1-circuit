@@ -2,7 +2,7 @@
 // 发车线与发车格、发车灯架、裁判岗亭、刹车距离牌。
 // 建筑本体（维修楼、主看台顶棚、“翼”形结构、围场行宫等）由 osm.js 按 OSM 真实轮廓生成。
 import * as THREE from 'three';
-import { TEAM_COLORS, TURNS } from './data.js';
+import { TEAMS, TURNS } from './data.js';
 import { OSM_PIT, OSM_STANDS } from './osm-data.js';
 import { V, std, lampMat, makePath, ribbon, wall, canvasTex, floodlit } from './util.js';
 import { asGround } from './osm.js';
@@ -22,7 +22,7 @@ function numberTex(text, bg, fg) {
   });
 }
 
-export function buildVenue(scene, track) {
+export function buildVenue(scene, track, pitb) {
   const g = new THREE.Group();
   g.name = 'venue';
   const white = std('#f3f4f6', { roughness: 0.55 }, 0.42);
@@ -38,21 +38,38 @@ export function buildVenue(scene, track) {
   const pitPts = pitCurve.getSpacedPoints(Math.round(pitCurve.getLength() / 2));
   const pit = makePath(pitPts, false);
   const N = pit.N;
-  const pitAsphalt = new THREE.Mesh(ribbon(pit, { offA: 6, offB: -6, y: 0.14 }), std('#3b3e44', { roughness: 0.9 }, 0.55));
+  // 维修通道在车库前加宽到车库门（工作区），其余路段 12 m
+  const toGarage = pit.pts.map((pt) => {
+    const d = pt.clone().sub(pitb.front).dot(pitb.f); // 离维修楼正面的距离
+    const along = pt.clone().sub(pitb.front).dot(new THREE.Vector3().crossVectors(pitb.f, UP));
+    return Math.abs(along) < pitb.L / 2 + 4 && d > 0 && d < 22 ? d : null;
+  });
+  const offB = (i) => (toGarage[i] !== null ? -toGarage[i] : -6);
+  const pitAsphalt = new THREE.Mesh(ribbon(pit, { offA: 6, offB: (i) => offB(i) - 0.2, y: 0.14 }), std('#3b3e44', { roughness: 0.9 }, 0.55));
   g.add(asGround(pitAsphalt, -1.15));
-  for (const o of [5.6, -5.6]) g.add(asGround(new THREE.Mesh(ribbon(pit, { offA: o + 0.15, offB: o - 0.15, y: 0.16 }), lineMat), -1.0));
-  // 快车道与工作区分隔线（靠车库一侧）
-  const dashTex = canvasTex(64, 8, (cx, w, h) => { cx.clearRect(0, 0, w, h); cx.fillStyle = '#fff'; cx.fillRect(0, 0, w * 0.55, h); }, [1, 1]);
-  const dashMat = new THREE.MeshStandardMaterial({ map: dashTex, transparent: true, alphaTest: 0.5 });
+  g.add(asGround(new THREE.Mesh(ribbon(pit, { offA: 5.75, offB: 5.45, y: 0.16 }), lineMat), -1.0));
+  // 快车道 / 工作区分界线（实线）
+  g.add(asGround(new THREE.Mesh(ribbon(pit, { offA: (i) => (toGarage[i] !== null ? -1.0 : -5.45), offB: (i) => (toGarage[i] !== null ? -1.3 : -5.75), y: 0.16 }), lineMat), -1.0));
   const i0 = Math.round(N * 0.12), i1 = Math.round(N * 0.9);
-  g.add(asGround(new THREE.Mesh(ribbon(pit, { offA: -1.6, offB: -1.9, y: 0.17, uv: 6, from: i0, to: i1 }), dashMat), -1.0));
   // 限速线（入口、出口各一条，横跨维修通道）
+  const signTex = canvasTex(128, 128, (cx, w, h) => {
+    cx.fillStyle = '#ffffff'; cx.beginPath(); cx.arc(64, 64, 62, 0, 7); cx.fill();
+    cx.strokeStyle = '#d4001a'; cx.lineWidth = 14; cx.beginPath(); cx.arc(64, 64, 54, 0, 7); cx.stroke();
+    cx.fillStyle = '#111'; cx.font = 'bold 54px Arial, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('80', 64, 68);
+  });
+  const signMat = floodlit(new THREE.MeshStandardMaterial({ map: signTex, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide }), 0.9);
   for (const k of [Math.round(N * 0.1), Math.round(N * 0.92)]) {
-    const pt = pit.pts[k], t = pit.tan[k];
+    const pt = pit.pts[k], t = pit.tan[k], nr = pit.nor[k];
     const line = new THREE.Mesh(new THREE.PlaneGeometry(12, 0.5), lineMat.clone());
     line.rotation.set(-Math.PI / 2, 0, Math.atan2(t.x, t.z) + Math.PI / 2);
     line.position.set(pt.x, 0.18, pt.z);
     g.add(asGround(line, -1.0));
+    // 限速 80 km/h 标牌（立在维修通道右侧）
+    const sp = pt.clone().addScaledVector(nr, -6.8);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 8), steel); post.position.set(sp.x, 1.1, sp.z);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.45, 32), signMat); disc.position.set(sp.x, 2.4, sp.z);
+    disc.rotation.y = Math.atan2(t.x, t.z) + Math.PI;
+    g.add(post, disc);
   }
   // 维修墙 + 防护网（位于维修通道靠赛道的一侧）
   const pw = new THREE.Mesh(wall(pit, { off: 6.6, h: 1.25, from: i0, to: i1 }), std('#eef0f2', { roughness: 0.7, side: THREE.DoubleSide }, 0.6));
@@ -60,52 +77,23 @@ export function buildVenue(scene, track) {
   g.add(pw);
   g.add(new THREE.Mesh(wall(pit, { off: 6.6, h: 3.4, y: 1.25, from: i0, to: i1 }), new THREE.MeshStandardMaterial({ color: '#b8c0cc', transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false })));
   // 车队指挥台（沿维修墙一字排开，带遮阳顶）
-  const nStand = 11;
+  const nStand = TEAMS.length;
   const standGeo = new THREE.BoxGeometry(2.0, 2.4, 6.5).translate(0, 1.2, 0);
   const roofGeo = new THREE.BoxGeometry(3.2, 0.25, 7.2).translate(0, 3.4, 0);
   const pws = new THREE.InstancedMesh(standGeo, dark, nStand);
   const pwr = new THREE.InstancedMesh(roofGeo, floodlit(new THREE.MeshStandardMaterial({ roughness: 0.5 }), 0.8), nStand);
   for (let k = 0; k < nStand; k++) {
-    const idx = Math.round(N * (0.3 + (k * 0.45) / (nStand - 1)));
+    const gpos = pitb.toWorld(pitb.bayX(k * 3 + 1), 0); // 该队中间车库正对的位置
+    let idx = 0, bd = Infinity;
+    pit.pts.forEach((pp, j) => { const dd = pp.distanceTo(gpos); if (dd < bd) { bd = dd; idx = j; } });
     const pt = pit.pts[idx], nr = pit.nor[idx], t = pit.tan[idx];
     q.setFromAxisAngle(UP, Math.atan2(t.x, t.z));
     m4.compose(p.copy(pt).addScaledVector(nr, 5.2), q, s.set(1, 1, 1));
     pws.setMatrixAt(k, m4); pwr.setMatrixAt(k, m4);
-    pwr.setColorAt(k, c.set(TEAM_COLORS[k % TEAM_COLORS.length]));
+    pwr.setColorAt(k, c.set(TEAMS[k].color));
   }
   pws.castShadow = true;
   g.add(pws, pwr);
-
-  // ── 车库门、车队色带、室内灯（贴在 OSM 维修楼正面）──
-  const P = OSM_STANDS.P[0];
-  const pf = new THREE.Vector3(P.f[0], 0, -P.f[1]).normalize();
-  const pu = new THREE.Vector3().crossVectors(pf, UP); // 沿维修楼长边
-  const pFront = V(P.front[0], P.front[1]).addScaledVector(pf, 0.25);
-  const nGar = Math.floor((P.L - 6) / 9.4);
-  const rotG = Math.atan2(pf.x, pf.z);
-  const doors = new THREE.InstancedMesh(new THREE.BoxGeometry(8.4, 5.4, 0.3), std('#15161a', { roughness: 0.4 }, 0.15), nGar);
-  const fascia = new THREE.InstancedMesh(new THREE.BoxGeometry(9.2, 1.4, 0.4), floodlit(new THREE.MeshStandardMaterial({ roughness: 0.5 }), 0.9), nGar);
-  const inner = new THREE.InstancedMesh(new THREE.BoxGeometry(7.8, 0.3, 0.2), lamp, nGar);
-  q.setFromAxisAngle(UP, rotG);
-  for (let k = 0; k < nGar; k++) {
-    const off = (k - (nGar - 1) / 2) * 9.4;
-    const base = pFront.clone().addScaledVector(pu, off);
-    doors.setMatrixAt(k, m4.compose(p.copy(base).setY(2.8), q, s.set(1, 1, 1)));
-    fascia.setMatrixAt(k, m4.compose(p.copy(base).setY(6.4).addScaledVector(pf, 0.1), q, s.set(1, 1, 1)));
-    fascia.setColorAt(k, c.set(TEAM_COLORS[Math.floor(k / 3) % TEAM_COLORS.length]));
-    inner.setMatrixAt(k, m4.compose(p.copy(base).setY(5.2).addScaledVector(pf, 0.2), q, s.set(1, 1, 1)));
-  }
-  g.add(doors, fascia, inner);
-  // 领奖台：维修楼正面，悬挑于维修通道上方
-  const pod = pFront.clone().addScaledVector(pu, 40);
-  const podium = new THREE.Group();
-  podium.position.copy(pod); podium.rotation.y = rotG;
-  const plat = new THREE.Mesh(new THREE.BoxGeometry(24, 0.8, 7), white); plat.position.set(0, 9.4, 3.2);
-  const back = new THREE.Mesh(new THREE.BoxGeometry(24, 6.5, 0.4), red); back.position.set(0, 13, -0.1);
-  const rail = new THREE.Mesh(new THREE.BoxGeometry(24, 1.1, 0.1), new THREE.MeshStandardMaterial({ color: '#cfe3f2', transparent: true, opacity: 0.35 })); rail.position.set(0, 10.4, 6.6);
-  podium.add(plat, back, rail);
-  [[0, 1.6], [-3.2, 1.1], [3.2, 0.8]].forEach(([x, h]) => { const b = new THREE.Mesh(new THREE.BoxGeometry(2.6, h, 2.2), dark); b.position.set(x, 9.8 + h / 2, 2.6); podium.add(b); });
-  g.add(podium);
 
   // ── 起终点线、发车格、发车灯架 ──
   const iS = track.nearest(START_LINE[0], -START_LINE[1]);

@@ -111,7 +111,22 @@ export const STANDS = [
   },
 ];
 
-export const TEAM_COLORS = [
-  '#e8002d', '#27f4d2', '#3671c6', '#ff8000', '#229971',
-  '#ff87bc', '#64c4ff', '#6692ff', '#52e252', '#b6babd',
+// 2026 赛季 11 支车队，按维修区车库顺序排列：
+//   车库按上一赛季（2025）车队积分榜排名分配，冠军车队使用最靠近维修通道入口的车库（formula1.com 说明）。
+//   2025 车队榜：迈凯伦、梅赛德斯、红牛、法拉利、威廉姆斯、Racing Bulls、阿斯顿·马丁、哈斯、Sauber（2026 起为奥迪）、Alpine；
+//   凯迪拉克为 2026 年新加入的第 11 支车队。
+// color 为各队常用的代表色（近似值，非官方色值）；logo 由 public/brand/manifest.json 提供（可选）。
+export const TEAMS = [
+  { id: 'mclaren', name: 'McLaren', zh: '迈凯伦', color: '#ff8000', text: '#111111' },
+  { id: 'mercedes', name: 'Mercedes', zh: '梅赛德斯', color: '#27f4d2', text: '#111111' },
+  { id: 'redbull', name: 'Red Bull Racing', zh: '红牛', color: '#3671c6', text: '#ffffff' },
+  { id: 'ferrari', name: 'Ferrari', zh: '法拉利', color: '#e8002d', text: '#ffffff' },
+  { id: 'williams', name: 'Williams', zh: '威廉姆斯', color: '#64c4ff', text: '#0b1d3a' },
+  { id: 'racingbulls', name: 'Racing Bulls', zh: 'Racing Bulls', color: '#6692ff', text: '#ffffff' },
+  { id: 'astonmartin', name: 'Aston Martin', zh: '阿斯顿·马丁', color: '#229971', text: '#ffffff' },
+  { id: 'haas', name: 'Haas', zh: '哈斯', color: '#b6babd', text: '#b0001e' },
+  { id: 'audi', name: 'Audi', zh: '奥迪', color: '#a7adb3', text: '#c4001c' },
+  { id: 'alpine', name: 'Alpine', zh: 'Alpine', color: '#ff87bc', text: '#0a2a5c' },
+  { id: 'cadillac', name: 'Cadillac', zh: '凯迪拉克', color: '#1e1e24', text: '#ffffff' },
 ];
+export const TEAM_COLORS = TEAMS.map((t) => t.color);

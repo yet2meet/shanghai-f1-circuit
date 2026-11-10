@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { TEAM_COLORS } from './data.js';
+import { TEAMS } from './data.js';
 import { floodlit } from './util.js';
 
 function carGeometries() {
@@ -29,16 +29,16 @@ export function buildCars(scene, track) {
   const carbon = floodlit(new THREE.MeshStandardMaterial({ color: '#1b1c1f', roughness: 0.5 }), 0.3);
   const rear = new THREE.MeshStandardMaterial({ color: '#400', emissive: '#ff1a10', emissiveIntensity: 4 });
   const cars = [];
-  const n = 20;
+  const n = TEAMS.length * 2; // 2026：11 支车队 × 2 辆
   for (let i = 0; i < n; i++) {
     const g = new THREE.Group();
-    const paint = floodlit(new THREE.MeshStandardMaterial({ color: TEAM_COLORS[(i / 2) | 0], roughness: 0.3, metalness: 0.4 }), 0.8);
+    const paint = floodlit(new THREE.MeshStandardMaterial({ color: TEAMS[(i / 2) | 0].color, roughness: 0.3, metalness: 0.4 }), 0.8);
     const body = new THREE.Mesh(geo.body, paint);
     body.castShadow = true;
     g.add(body, new THREE.Mesh(geo.wings, carbon), new THREE.Mesh(geo.wheels, tyre), new THREE.Mesh(geo.light, rear));
-    g.scale.setScalar(1.5);
+    // 1:1 尺寸：车长约 5.7 m、宽 1.95 m（与真实 F1 赛车一致）
     scene.add(g);
-    cars.push({ g, s: track.total * (0.08 + (i * 0.045) % 1) + ((i * 37) % 11), lane: ((i * 13) % 7 - 3) * 0.6 });
+    cars.push({ g, s: track.total * ((0.08 + i * 0.041) % 1) + ((i * 37) % 11), lane: ((i * 13) % 7 - 3) * 0.6 });
   }
   const p = new THREE.Vector3(), ahead = new THREE.Vector3();
   const sample = (s, lane, out) => {

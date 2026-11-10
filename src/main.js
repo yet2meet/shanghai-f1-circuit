@@ -10,9 +10,10 @@ import { V, night, nightEmissives, fmtPrice } from './util.js';
 import { buildTrack } from './track.js';
 import { buildStands, seatColor, seatMatrix, seatWorld as seatPos, seatFacing, SELECTED_COLOR } from './stands.js';
 import { buildVenue } from './venue.js';
-import { buildEnvironment, applyTime } from './environment.js';
+import { buildEnvironment, applyTime, fitShadow } from './environment.js';
 import { buildCars } from './cars.js';
 import { buildOSM } from './osm.js';
+import { buildPitBuilding } from './pitbuilding.js';
 
 const $ = (s) => document.querySelector(s);
 const canvas = $('#scene');
@@ -51,11 +52,14 @@ const track = buildTrack(scene);
 await step(0.45, '搭建看台与座位');
 const { stands, hitboxes } = buildStands(scene);
 await step(0.6, '搭建维修区与围场');
-const venue = buildVenue(scene, track);
+// 可选的授权素材清单（public/brand/manifest.json），没有则使用文字名称牌
+const brand = await fetch('./brand/manifest.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+const pitb = buildPitBuilding(scene, brand);
+const venue = buildVenue(scene, track, pitb);
 await step(0.68, '加载周边道路、水系与建筑');
 const osm = buildOSM(scene);
 await step(0.72, '种植草木与周边环境');
-const env = buildEnvironment(scene, track, stands);
+const env = buildEnvironment(scene, track, stands, renderer);
 const cars = buildCars(scene, track);
 const standById = Object.fromEntries(stands.map((s) => [s.spec.id, s]));
 
@@ -567,6 +571,13 @@ function frame() {
   } else {
     controls.update();
     if (seatCam) pinSeatCam();
+  }
+  fitShadow(env, controls.target, camera.position.distanceTo(controls.target));
+  // 看台细节层级：镜头离看台较远时用座面条带代替逐个座位
+  for (const s of stands) {
+    if (!s.carpet) continue;
+    const near = camera.position.distanceTo(s.center) < 280 + s.L * 0.5 || state.stand === s;
+    s.mesh.visible = near; s.carpet.visible = !near;
   }
   if (pointer && !fly && !down?.dragging) pick(pointer.x, pointer.y);
   cars.update(dt);

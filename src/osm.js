@@ -388,7 +388,7 @@ export function buildOSM(scene) {
   const nT = treeSpots.length / 3;
   if (nT) {
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.28, 1, 5), std('#6a4f3a', { roughness: 1 }), nT);
-    const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), floodlit(new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), 0.06), nT);
+    const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), floodlit(new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true }), 0.06), nT);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
     for (let i = 0; i < nT; i++) {
       const x = treeSpots[i * 3], n = treeSpots[i * 3 + 1], k = treeSpots[i * 3 + 2];

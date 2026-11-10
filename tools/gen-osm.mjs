@@ -136,7 +136,7 @@ const usedForStands = new Set();
 for (const [sid, parts] of Object.entries(STAND_PARTS)) {
   let list = parts.map(([code, id]) => {
     const e = way(id);
-    if (sid !== 'P') usedForStands.add(e.type + e.id); // 维修楼本身仍要渲染，只借用它的轮廓定位围场俱乐部
+    usedForStands.add(e.type + e.id); // 维修楼（P）由 src/pitbuilding.js 按此轮廓程序化建模
     return { code, ...frame(open(proj(e.geometry)), heightOf(e)) };
   });
   // E 看台由多段小看台组成：按沿赛道的先后顺序编号 E1、E2…

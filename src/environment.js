@@ -14,20 +14,31 @@ function glowTexture() {
   });
 }
 
-export function buildEnvironment(scene, track, stands) {
+// 天空：天顶→地平线渐变 + 太阳圆盘与日晕 + 地平线薄雾；下半球为地面色（供环境反射使用）
+const SKY_VERT = 'varying vec3 vP; void main(){ vP = normalize(position); vec4 p = modelViewMatrix * vec4(position * 100.0, 0.0); gl_Position = projectionMatrix * vec4(p.xyz, 1.0); }';
+const SKY_FRAG = `uniform vec3 top; uniform vec3 bottom; uniform vec3 ground; uniform vec3 sunDir; uniform vec3 sunColor; uniform float sunAmt;
+varying vec3 vP;
+void main(){
+  vec3 d = normalize(vP);
+  float h = clamp(d.y * 1.15 + 0.04, 0.0, 1.0);
+  vec3 col = mix(bottom, top, pow(h, 0.55));
+  col = mix(col, bottom * 1.06, exp(-abs(d.y) * 18.0) * 0.6);           // 地平线薄雾
+  float s = max(dot(d, normalize(sunDir)), 0.0);
+  col += sunColor * (pow(s, 1800.0) * 6.0 + pow(s, 60.0) * 0.35 + pow(s, 6.0) * 0.08) * sunAmt; // 太阳与日晕
+  col = mix(col, ground, smoothstep(0.0, -0.06, d.y));                    // 地面
+  gl_FragColor = vec4(col, 1.0);
+}`;
+function skyMaterial(u, opts = {}) {
+  return new THREE.ShaderMaterial({ uniforms: u, side: THREE.BackSide, depthTest: false, depthWrite: false, fog: false, vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, ...opts });
+}
+
+export function buildEnvironment(scene, track, stands, renderer) {
   const env = { glows: [] };
   const rand = rng(20040926);
 
   // ── 天空 ──
-  const skyU = { top: { value: new THREE.Color() }, bottom: { value: new THREE.Color() } };
-  const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 32, 16),
-    new THREE.ShaderMaterial({
-      uniforms: skyU, side: THREE.BackSide, depthTest: false, depthWrite: false, fog: false,
-      vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); vec4 p = modelViewMatrix * vec4(position * 100.0, 0.0); gl_Position = projectionMatrix * vec4(p.xyz, 1.0); }',
-      fragmentShader: 'uniform vec3 top; uniform vec3 bottom; varying vec3 vP; void main(){ float h = clamp(vP.y * 1.15 + 0.04, 0.0, 1.0); gl_FragColor = vec4(mix(bottom, top, pow(h, 0.55)), 1.0); }',
-    })
-  );
+  const skyU = { top: { value: new THREE.Color() }, bottom: { value: new THREE.Color() }, ground: { value: new THREE.Color('#5f6d4c') }, sunDir: { value: new THREE.Vector3(0.4, 0.75, -0.5) }, sunColor: { value: new THREE.Color('#fff1d6') }, sunAmt: { value: 1 } };
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), skyMaterial(skyU));
   sky.renderOrder = -1000; sky.frustumCulled = false;
   scene.add(sky);
   env.skyU = skyU;
@@ -146,6 +157,22 @@ export function buildEnvironment(scene, track, stands) {
   scene.add(env.hemi, env.sun, env.sun.target);
 
   scene.fog = new THREE.Fog('#cfe4f5', 5200, 14000);
+
+  // ── 环境反射：分别为白天和夜晚预先生成一张，玻璃、金属、水面据此反射天空 ──
+  if (renderer) {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envScene = new THREE.Scene();
+    const u = THREE.UniformsUtils.clone(skyU);
+    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), skyMaterial(u)));
+    const bake = (k) => {
+      u.top.value.lerpColors(DAY.top, NIGHT.top, k); u.bottom.value.lerpColors(DAY.bottom, NIGHT.bottom, k);
+      u.ground.value.set(k ? '#0b0d10' : '#5f6d4c'); u.sunDir.value.copy(DAY.sunPos).normalize(); u.sunAmt.value = k ? 0 : 1;
+      return pmrem.fromScene(envScene, 0.02).texture;
+    };
+    env.envDay = bake(0); env.envNight = bake(1);
+    pmrem.dispose();
+    scene.environment = env.envDay;
+  }
   env.sky = sky;
   env.center = CENTER;
   return env;
@@ -172,9 +199,32 @@ export function applyTime(env, scene, t) {
   scene.fog.color.copy(env.skyU.bottom.value);
   env.sun.color.lerpColors(DAY.sun, NIGHT.sun, t).lerp(C('#ff8a4a'), dusk * 0.5);
   env.sun.intensity = L(3.0, 0.28, t);
-  env.sun.position.copy(env.center).add(new THREE.Vector3().lerpVectors(DAY.sunPos, NIGHT.sunPos, t));
+  env.sunDir = new THREE.Vector3().lerpVectors(DAY.sunPos, NIGHT.sunPos, t).normalize();
+  env.sun.position.copy(env.sun.target.position).addScaledVector(env.sunDir, 2000);
+  env.skyU.sunDir.value.copy(env.sunDir);
+  env.skyU.sunAmt.value = 1 - THREE.MathUtils.smoothstep(t, 0.2, 0.6);
+  env.skyU.ground.value.lerpColors(C('#5f6d4c'), C('#07090c'), t);
+  if (env.envDay) { scene.environment = t < 0.5 ? env.envDay : env.envNight; scene.environmentIntensity = THREE.MathUtils.lerp(0.75, 0.25, t); }
   env.hemi.color.lerpColors(DAY.hemiSky, NIGHT.hemiSky, t);
   env.hemi.groundColor.lerpColors(DAY.hemiGround, NIGHT.hemiGround, t);
-  env.hemi.intensity = L(1.15, 0.32, t);
+  env.hemi.intensity = L(0.62, 0.22, t);
   env.stars.material.opacity = THREE.MathUtils.smoothstep(t, 0.6, 1);
+}
+
+/** 阴影范围跟随视角：镜头越近，阴影贴图覆盖的范围越小、越清晰 */
+export function fitShadow(env, target, dist) {
+  const half = THREE.MathUtils.clamp(dist * 0.85, 45, 1300);
+  const cam = env.sun.shadow.camera;
+  const texel = (half * 2) / env.sun.shadow.mapSize.x;
+  const tx = Math.round(target.x / texel) * texel, tz = Math.round(target.z / texel) * texel;
+  env.sun.target.position.set(tx, 0, tz);
+  env.sun.target.updateMatrixWorld();
+  if (env.sunDir) env.sun.position.set(tx, 0, tz).addScaledVector(env.sunDir, 2000);
+  if (Math.abs(cam.right - half) / half > 0.04) {
+    cam.left = -half; cam.right = half; cam.top = half; cam.bottom = -half;
+    cam.near = 1500; cam.far = 2600 + half;
+    cam.updateProjectionMatrix();
+    env.sun.shadow.normalBias = texel * 1.2;
+    env.sun.shadow.bias = -0.00015;
+  }
 }

@@ -17,8 +17,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 function seatGeometry() {
   const pan = new THREE.BoxGeometry(0.47, 0.07, 0.42); pan.translate(0, 0.44, -0.02);
   const back = new THREE.BoxGeometry(0.47, 0.42, 0.06); back.translate(0, 0.68, 0.2);
-  const leg = new THREE.BoxGeometry(0.06, 0.4, 0.06); leg.translate(0, 0.2, 0.05);
-  return mergeGeometries([pan, back, leg]);
+  return mergeGeometries([pan, back]); // 24 个三角形；座位数量大，几何尽量精简
 }
 
 /** OSM 坐标里的看台框架 → 三维：front 为前沿中点，f 指向赛道 */
@@ -133,6 +132,12 @@ function buildSeatPart(spec, part, pi, ctx) {
     for (let r = 0; r < ti.count; r++) {
       const row = rows[ti.first + r];
       let num = 0; // 面向赛道时从左往右数
+      let runZone = null, runStart = 0;
+      const flushRun = (endSlot) => {
+        if (runZone === null) return;
+        const xa = x0 + runStart * PITCH, xb = x0 + endSlot * PITCH;
+        ctx.carpet.push({ G, xa, xb, y: row.y + 0.55, z0: row.z - ROW_D * 0.45, z1: row.z + ROW_D * 0.45, color: spec.zones[runZone].color });
+      };
       for (let s = 0; s < nSlots; s++) {
         if (s % per >= BLOCK) continue;
         num++;
@@ -141,6 +146,7 @@ function buildSeatPart(spec, part, pi, ctx) {
         const c = t.center;
         const zone = c && fromT1 >= c.fromT1 && fromT1 <= c.toT1 ? c.zone : t.zone;
         const side = c && zone !== c.zone ? (fromT1 < c.fromT1 ? 't1' : 't16') : '';
+        if (zone !== runZone) { flushRun(s); runZone = zone; runStart = s; }
         const key = pi + ':' + k + ':' + zone + ':' + side;
         let b = blockMap.get(key);
         if (!b) {
@@ -156,11 +162,16 @@ function buildSeatPart(spec, part, pi, ctx) {
         base.push(v.x, v.y, v.z);
         rot.push(rotY);
       }
+      flushRun(nSlots);
     }
-    // 过道扶手：每条过道中线一根，顺着台阶斜向上
+    // 过道扶手：每条过道中线一根，顺着台阶斜向上；每级台阶前沿一条黄色防滑边
     const rLast = rows[ti.first + ti.count - 1];
     for (let s = BLOCK; s < nSlots; s += per) {
       const ax = x0 + (s + AISLE / 2) * PITCH;
+      for (let r = 0; r < ti.count; r++) {
+        const rr = rows[ti.first + r];
+        ctx.nosing.push(new THREE.Matrix4().makeTranslation(ax, rr.y + 0.012, rr.z - ROW_D * 0.5 + 0.04).premultiply(G.matrixWorld));
+      }
       rails.seg(G, [ax, r0.y + 1.0, r0.z - 0.3], [ax, rLast.y + 1.0, rLast.z + 0.3], 0.05);
       for (let r = 0; r < ti.count; r += 4) {
         const rr = rows[ti.first + r];
@@ -217,7 +228,7 @@ function buildSeatStand(spec, mats, seatGeo, common) {
   const ctx = {
     mats, seats: [], base: [], rot: [], partOf: [], blocks: [], blockMap: new Map(),
     rand: rng(spec.id.charCodeAt(0) * 7919),
-    rails: railBatcher(mats.steel), glassPanels: [], hitboxes: common.hitboxes, hitMat: common.hitMat, colorMat: common.colorMat,
+    rails: railBatcher(mats.steel), glassPanels: [], nosing: [], carpet: [], hitboxes: common.hitboxes, hitMat: common.hitMat, colorMat: common.colorMat,
   };
   const parts = OSM_STANDS[spec.id];
   parts.forEach((part, pi) => g.add(buildSeatPart(spec, part, pi, ctx)));
@@ -242,13 +253,32 @@ function buildSeatStand(spec, mats, seatGeo, common) {
   mesh.receiveShadow = true;
   mesh.frustumCulled = false;
   g.add(mesh);
+  // 远景替身：每排一条按票区上色的座面条带（几百个三角形），镜头靠近时才显示逐个座位
+  const cp = [], cc = [], c3 = new THREE.Color(), vv = new THREE.Vector3();
+  for (const r of ctx.carpet) {
+    c3.set(r.color);
+    const quad = [[r.xa, r.z0], [r.xb, r.z0], [r.xb, r.z1], [r.xa, r.z0], [r.xb, r.z1], [r.xa, r.z1]];
+    for (const [x, z] of quad) { vv.set(x, r.y, z).applyMatrix4(r.G.matrixWorld); cp.push(vv.x, vv.y, vv.z); cc.push(c3.r, c3.g, c3.b); }
+  }
+  const cg = new THREE.BufferGeometry();
+  cg.setAttribute('position', new THREE.Float32BufferAttribute(cp, 3));
+  cg.setAttribute('color', new THREE.Float32BufferAttribute(cc, 3));
+  cg.computeVertexNormals();
+  const carpet = new THREE.Mesh(cg, mats.carpet);
+  carpet.visible = false;
+  g.add(carpet);
+  // 台阶防滑边
+  const nose = new THREE.InstancedMesh(new THREE.BoxGeometry(AISLE * PITCH - 0.1, 0.025, 0.07), mats.nosing, ctx.nosing.length);
+  ctx.nosing.forEach((m, i) => nose.setMatrixAt(i, m));
+  nose.frustumCulled = false;
+  g.add(nose);
   blocks.forEach((b) => {
     b.center = b.sum.multiplyScalar(1 / b.count);
     b.label = new THREE.Vector3(b.center.x, b.top + 4.5, b.center.z);
     b.f = ctx.partOf[b.part].f;
   });
 
-  const s = { g, mesh, seats, base: new Float32Array(base), rot: new Float32Array(rot), blocks, parts: ctx.partOf };
+  const s = { g, mesh, seats, base: new Float32Array(base), rot: new Float32Array(rot), blocks, parts: ctx.partOf, carpet };
   s.pickSeat = (ray) => pickSeat(s, ray);
   return s;
 }
@@ -334,25 +364,8 @@ function buildGrass(spec, mats, common) {
     fencePanels.push(pg);
   }
   g.add(rails.build(), new THREE.Mesh(mergeGeometries(fencePanels), mats.fenceMesh));
-  // 观众
-  const rand = rng(spec.id.charCodeAt(0) * 131);
-  let A = 0; for (let i = 0; i < p.length; i += 2) { const j = (i + 2) % p.length; A += p[i] * p[j + 1] - p[j] * p[i + 1]; } A = Math.abs(A / 2);
-  const n = Math.min(1800, Math.round(A / 14));
   let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
   for (let i = 0; i < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); n0 = Math.min(n0, p[i + 1]); n1 = Math.max(n1, p[i + 1]); }
-  const people = new THREE.InstancedMesh(new THREE.CapsuleGeometry(0.28, 0.9, 2, 6), mats.people, n);
-  const mats4 = new THREE.Matrix4(), c = new THREE.Color();
-  const palette = ['#ff453a', '#ffd60a', '#0a84ff', '#ffffff', '#30d158', '#ff9f0a', '#1c1c1e', '#bf5af2', '#e8002d', '#27f4d2'];
-  let k = 0, guard = 0;
-  while (k < n && guard++ < n * 20) {
-    const x = x0 + rand() * (x1 - x0), nn = n0 + rand() * (n1 - n0);
-    if (!insidePoly(x, nn, p)) continue;
-    people.setMatrixAt(k, mats4.makeTranslation(x, 1.5 + 0.73, -nn));
-    people.setColorAt(k, c.set(palette[(rand() * palette.length) | 0]));
-    k++;
-  }
-  people.count = k;
-  g.add(people);
   // 前沿标识牌
   const sign = new THREE.Mesh(new THREE.BoxGeometry(Math.min(part.L, 60), 1.6, 0.2), common.colorMat(spec.zones.g.color));
   const front = V(part.front[0], part.front[1]).addScaledVector(f, 4);
@@ -405,6 +418,8 @@ export function buildStands(scene) {
     fenceMesh: new THREE.MeshStandardMaterial({ color: '#9aa3ad', transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }),
     led: lampMat('#ffffff', '#ffffff', 3),
     seat: floodlit(new THREE.MeshStandardMaterial({ roughness: 0.55 }), 0.58),
+    nosing: std('#f5c518', { roughness: 0.6 }, 0.7),
+    carpet: floodlit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide }), 0.58),
     grass: std('#5fa64a', { roughness: 1 }, 0.5),
     people: floodlit(new THREE.MeshStandardMaterial({ roughness: 0.8 }), 0.8),
   };
