@@ -247,14 +247,24 @@ console.log('buildings', buildings.length, count(buildings));
 console.log('areas', areas.length, count(areas));
 console.log('lines', lines.length, count(lines));
 
+// 坐标按 0.1 m 取整后做增量编码，体积约为直接写小数的 2/3，加载时再解码
+const enc = (flat) => { const out = []; let px = 0, pn = 0; for (let i = 0; i < flat.length; i += 2) { const x = Math.round(flat[i] * 10), n = Math.round(flat[i + 1] * 10); out.push(x - px, n - pn); px = x; pn = n; } return out; };
+const ENC = {
+  B: buildings.map((x) => ({ ...x, p: enc(x.p), q: x.q.map(enc) })),
+  A: areas.map(({ A, ...x }) => ({ ...x, p: enc(x.p), q: x.q.map(enc) })),
+  L: lines.map((x) => ({ ...x, p: enc(x.p) })),
+};
 const js = `// 由 tools/gen-osm.mjs 自动生成，请勿手改。
 // 地图数据 © OpenStreetMap contributors（ODbL），已换算为场景坐标 (x, n)，单位：米。
+// 多边形与折线坐标为 0.1 m 精度的增量编码，下方 D() 负责解码。
+const D = (a) => { const o = new Array(a.length); let x = 0, n = 0; for (let i = 0; i < a.length; i += 2) { x += a[i]; n += a[i + 1]; o[i] = x / 10; o[i + 1] = n / 10; } return o; };
+const RAW = ${JSON.stringify(ENC)};
 export const OSM_TRACK = ${JSON.stringify(main.map(([x, n]) => [r1(x), r1(n)]))};
 export const OSM_PIT = ${JSON.stringify(pit.map(([x, n]) => [r1(x), r1(n)]))};
 export const OSM_STANDS = ${JSON.stringify(stands)};
-export const OSM_BUILDINGS = ${JSON.stringify(buildings)};
-export const OSM_AREAS = ${JSON.stringify(areas.map(({ A, ...a }) => a))};
-export const OSM_LINES = ${JSON.stringify(lines)};
+export const OSM_BUILDINGS = RAW.B.map((b) => ({ ...b, p: D(b.p), q: b.q.map(D) }));
+export const OSM_AREAS = RAW.A.map((a) => ({ ...a, p: D(a.p), q: a.q.map(D) }));
+export const OSM_LINES = RAW.L.map((l) => ({ ...l, p: D(l.p) }));
 `;
 writeFileSync(new URL('../src/osm-data.js', import.meta.url), js);
 console.log('wrote src/osm-data.js', (js.length / 1024).toFixed(0), 'KB');

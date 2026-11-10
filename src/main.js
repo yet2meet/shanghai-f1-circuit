@@ -19,10 +19,16 @@ const $ = (s) => document.querySelector(s);
 const canvas = $('#scene');
 
 // ───────────────────────── 渲染器 ─────────────────────────
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// 性能档位：手机 / 平板用更低的像素比与抗锯齿采样
+const MOBILE = matchMedia('(pointer: coarse)').matches || innerWidth <= 860;
+const DPR_CAP = Math.min(devicePixelRatio, MOBILE ? 1.25 : 1.5);
+// 画面先渲染到后期处理缓冲（自带多重采样抗锯齿），画布本身不再开抗锯齿；
+// 不用对数深度缓冲（会让显卡的提前深度剔除失效），改为按镜头距离动态调整近裁剪面来保证深度精度
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(DPR_CAP);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.autoUpdate = false; // 阴影只在视角变化或每隔几帧更新一次
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
 const scene = new THREE.Scene();
@@ -37,7 +43,7 @@ controls.maxDistance = 6500;
 controls.zoomToCursor = true;
 controls.zoomSpeed = 1.1;
 
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 }));
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: MOBILE ? 2 : 4 }));
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0, 0.55, 0.92);
 composer.addPass(bloom);
@@ -46,7 +52,16 @@ composer.addPass(new OutputPass());
 // ───────────────────────── 场景 ─────────────────────────
 // 分步搭建：每一步之间把主线程让出来，启动页的地球才不会卡住
 const splash = window.__splash;
-const step = (p, text) => { splash?.progress(p, text); return new Promise((r) => setTimeout(r, 40)); };
+// 加载各阶段耗时（在控制台输入 __perf 查看）
+const __perf = (window.__perf = { t0: performance.now(), marks: [] });
+let __last = performance.now(), __label = '下载与初始化';
+const step = (p, text) => {
+  const now = performance.now();
+  __perf.marks.push([__label, Math.round(now - __last)]);
+  __last = now; __label = text;
+  splash?.progress(p, text);
+  return new Promise((r) => setTimeout(r, 40));
+};
 await step(0.3, '铺设赛道');
 const track = buildTrack(scene);
 await step(0.45, '搭建看台与座位');
@@ -438,7 +453,8 @@ const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 const tooltip = $('#tooltip');
 let pointer = null, down = null, lastClick = 0, lastKey = '';
-canvas.addEventListener('pointermove', (e) => { pointer = { x: e.clientX, y: e.clientY }; });
+let lastPointerMove = 0;
+canvas.addEventListener('pointermove', (e) => { pointer = { x: e.clientX, y: e.clientY }; lastPointerMove = performance.now(); });
 canvas.addEventListener('pointerleave', () => { pointer = null; clearHover(); state.hoverStand = null; });
 canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, b: e.button }; });
 canvas.addEventListener('pointerup', (e) => {
@@ -531,7 +547,8 @@ function applyNight(t) {
   night.value = lights;
   for (const { m, max } of nightEmissives) m.emissiveIntensity = max * lights;
   for (const g of env.glows) g.material.opacity = lights * 0.9;
-  bloom.strength = 0.03 + lights * 0.5;
+  bloom.strength = lights * 0.5;
+  bloom.enabled = lights > 0.02; // 白天不跑泛光后期
   renderer.toneMappingExposure = THREE.MathUtils.lerp(1.0, 1.12, e);
 }
 applyNight(0);
@@ -543,6 +560,7 @@ function resize() {
   renderer.setSize(w, h, false);
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(w, h);
+  bloom.setSize(Math.ceil((w * renderer.getPixelRatio()) / 2), Math.ceil((h * renderer.getPixelRatio()) / 2)); // 泛光用半分辨率
   camera.aspect = w / h;
   const seatFov = seatCam ? camera.fov : null;
   updateHome();
@@ -554,8 +572,34 @@ addEventListener('resize', resize);
 resize();
 
 const clock = new THREE.Clock();
+// ── 运行时的性能控制 ──
+const perf = { ema: 16, dpr: DPR_CAP, slow: 0, fast: 0, frame: 0, lastShadow: -99 };
+const lastCam = new THREE.Vector3(), lastTgt = new THREE.Vector3();
+let camMoved = true;
+/** 自适应画质：持续掉帧时降低像素比，长时间流畅再升回去 */
+function governor(dt) {
+  perf.ema = perf.ema * 0.95 + dt * 1000 * 0.05;
+  if (perf.ema > 26) { perf.slow += dt; perf.fast = 0; } else if (perf.ema < 14) { perf.fast += dt; perf.slow = 0; } else { perf.slow = perf.fast = 0; }
+  let next = perf.dpr;
+  if (perf.slow > 1.5 && perf.dpr > 0.7) next = Math.max(0.7, perf.dpr - 0.15);
+  if (perf.fast > 5 && perf.dpr < DPR_CAP) next = Math.min(DPR_CAP, perf.dpr + 0.15);
+  if (next !== perf.dpr) { perf.dpr = next; perf.slow = perf.fast = 0; renderer.setPixelRatio(next); resize(); }
+}
+let skip = false;
 function frame() {
+  requestAnimationFrame(frame);
   const dt = Math.min(clock.getDelta(), 0.05);
+  // 画面静止时降到约 30 帧/秒（赛道上的赛车仍在动），节省一半的显卡开销
+  const busy = fly || camMoved || state.t !== state.nightTarget || performance.now() - lastPointerMove < 600;
+  if (busy) governor(dt); // 只用连续渲染时的真实帧间隔来判断是否掉帧
+  skip = !busy && !skip;
+  if (skip) { perfClock.dt += dt; return; }
+  const step = Math.min(dt + perfClock.dt, 0.1); perfClock.dt = 0;
+  tick(step);
+}
+const perfClock = { dt: 0 };
+function tick(dt) {
+  perf.frame++;
   if (state.t !== state.nightTarget) {
     const d = dt / 2.4;
     state.t = state.nightTarget > state.t ? Math.min(1, state.t + d) : Math.max(0, state.t - d);
@@ -572,7 +616,15 @@ function frame() {
     controls.update();
     if (seatCam) pinSeatCam();
   }
-  fitShadow(env, controls.target, camera.position.distanceTo(controls.target));
+  const dist = camera.position.distanceTo(controls.target);
+  camMoved = camera.position.distanceToSquared(lastCam) > 1e-4 || controls.target.distanceToSquared(lastTgt) > 1e-4;
+  lastCam.copy(camera.position); lastTgt.copy(controls.target);
+  // 近裁剪面随镜头距离变化：近看时 0.3 m，远看时放宽，保证深度精度
+  const near = THREE.MathUtils.clamp(Math.min(dist, camera.position.y) * 0.02, 0.3, 30);
+  if (Math.abs(camera.near - near) / near > 0.15) { camera.near = near; camera.updateProjectionMatrix(); }
+  const shadowMoved = fitShadow(env, controls.target, dist);
+  // 阴影：视角变化时立即重画，否则每 4 帧一次（让行驶中的赛车阴影跟上）
+  if (shadowMoved || camMoved || perf.frame - perf.lastShadow >= 4) { renderer.shadowMap.needsUpdate = true; perf.lastShadow = perf.frame; }
   // 看台细节层级：镜头离看台较远时用座面条带代替逐个座位
   for (const s of stands) {
     if (!s.carpet) continue;
@@ -584,7 +636,7 @@ function frame() {
   composer.render();
   updateLabels();
   updateMinimap();
-  requestAnimationFrame(frame);
+
 }
 
 // 预编译着色器并渲染第一帧，然后让启动页的地球转到上海、放大、淡出
@@ -598,4 +650,4 @@ clock.getDelta();
 flyTo(HOME.pos, HOME.target, 2.8); // 开场镜头
 requestAnimationFrame(frame);
 
-window.__app = { state, camera, controls, scene, renderer, stands, selectStand, enterSeats, goHome, setNight, toggleSeat, seatView, track, dolly, get seatCam() { return seatCam; } };
+window.__app = { state, camera, controls, scene, renderer, stands, selectStand, enterSeats, goHome, setNight, toggleSeat, seatView, track, dolly, get seatCam() { return seatCam; }, perf };

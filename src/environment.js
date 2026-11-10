@@ -149,7 +149,7 @@ export function buildEnvironment(scene, track, stands, renderer) {
   env.hemi = new THREE.HemisphereLight('#cfe6ff', '#6b7a55', 1.1);
   env.sun = new THREE.DirectionalLight('#fff4e0', 3);
   env.sun.castShadow = true;
-  env.sun.shadow.mapSize.set(4096, 4096);
+  env.sun.shadow.mapSize.set(2048, 2048); // 阴影范围随视角缩放，2048 已足够清晰
   const sc = env.sun.shadow.camera;
   sc.left = -1250; sc.right = 1250; sc.top = 1250; sc.bottom = -1250; sc.near = 100; sc.far = 4200;
   env.sun.shadow.bias = -0.0004; env.sun.shadow.normalBias = 0.6;
@@ -214,6 +214,7 @@ export function applyTime(env, scene, t) {
 /** 阴影范围跟随视角：镜头越近，阴影贴图覆盖的范围越小、越清晰 */
 export function fitShadow(env, target, dist) {
   const half = THREE.MathUtils.clamp(dist * 0.85, 45, 1300);
+  const before = env.sun.target.position.clone(), beforeHalf = env.sun.shadow.camera.right;
   const cam = env.sun.shadow.camera;
   const texel = (half * 2) / env.sun.shadow.mapSize.x;
   const tx = Math.round(target.x / texel) * texel, tz = Math.round(target.z / texel) * texel;
@@ -227,4 +228,5 @@ export function fitShadow(env, target, dist) {
     env.sun.shadow.normalBias = texel * 1.2;
     env.sun.shadow.bias = -0.00015;
   }
+  return !before.equals(env.sun.target.position) || beforeHalf !== env.sun.shadow.camera.right;
 }
