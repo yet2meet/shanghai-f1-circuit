@@ -14,5 +14,7 @@
   },
   "devDependencies": {
     "vite": "^5.4.0"
-  }
+  },
+  "author": "yet2meet",
+  "license": "UNLICENSED"
 }

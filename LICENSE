@@ -1,0 +1,19 @@
+Copyright (c) 2026 yet2meet. All rights reserved.
+
+本项目的源代码、程序化模型、界面设计与文案均为作者原创作品，保留所有权利。
+
+未经作者书面许可，任何人不得：
+  - 复制、修改、合并、发布、分发、再许可或出售本项目的全部或部分代码；
+  - 将本项目或其衍生作品部署为网站、应用或任何其他形式对外提供；
+  - 移除或篡改本项目中的版权声明与署名。
+
+仓库公开仅供浏览。浏览源代码不代表获得任何使用许可。
+
+第三方内容不属于上述作者权利范围，仍按各自的许可使用：
+  - 地图数据 © OpenStreetMap 贡献者，ODbL 许可（https://www.openstreetmap.org/copyright）；
+  - three.js、world-atlas 等依赖库按其各自的开源许可；
+  - Formula 1、F1 标志及各车队名称与标志归其各自权利人所有，本项目按项目方获得的授权使用。
+
+This software and associated files are proprietary. No permission is granted to copy,
+modify, distribute, deploy or sublicense them, in whole or in part, without the
+author's prior written consent. Third-party data and libraries remain under their own licenses.

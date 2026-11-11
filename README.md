@@ -49,3 +49,10 @@ node tools/gen-osm.mjs                  # 生成 src/osm-data.js
 - 3D 渲染：[three.js](https://threejs.org/)。
 
 本项目为非官方的爱好者作品，与 Formula 1、FIA、上海国际赛车场及久事体育均无关联。
+
+## 版权与免责声明
+
+© 2026 yet2meet，保留所有权利。本项目代码与模型未经作者书面许可不得复制、修改、分发或部署，详见 [LICENSE](LICENSE)。
+
+本项目为个人非官方作品，与 Formula 1、FIA、上海国际赛车场及各车队无隶属或合作关系；票价、座位等信息仅供参考，以官方渠道为准。
+

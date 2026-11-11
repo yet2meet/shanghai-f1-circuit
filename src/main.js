@@ -15,6 +15,7 @@ import { buildCars } from './cars.js';
 import { buildOSM } from './osm.js';
 import { buildKarting } from './karting.js';
 import { initGuide } from './guide.js';
+import { initAbout } from './about.js';
 import { buildCamLimits } from './camlimits.js';
 import { t as tr, L, onLang, isEn } from './i18n.js';
 import { buildPitBuilding } from './pitbuilding.js';
@@ -736,6 +737,7 @@ clock.getDelta();
 flyTo(HOME.pos, HOME.target, 2.8); // 开场镜头
 syncList(); // 按当前语言写入底部提示语（HTML 里的是中文占位）
 initGuide(); // 第一次打开时的新手引导
+initAbout(); // 署名与免责声明
 onLang(() => {
   renderList(); renderDetail(); syncList();
   labels.forEach((l) => {
