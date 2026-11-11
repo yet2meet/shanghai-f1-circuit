@@ -160,7 +160,7 @@ export function buildOSM(scene) {
     g.rotateX(-Math.PI / 2);
     (byKind[a.k] ||= []).push(g);
     const A = polyArea(a.p);
-    const dens = { forest: 45, park: 160, grass: 700, residential: 900, cemetery: 120 }[a.k];
+    const dens = { forest: 60, park: 220 }[a.k]; // 只在公园、林地种树，草坪保持干净
     if (dens) {
       const [x0, n0, x1, n1] = bboxOf(a.p);
       const n = Math.min(1500, Math.round(A / dens));
@@ -169,7 +169,7 @@ export function buildOSM(scene) {
         if (inside(x, nn, a.p) && !a.q.some((h) => inside(x, nn, h))) { treeSpots.push(x, nn, a.k === 'forest' ? 1.15 : 1); k++; }
       }
     }
-    if (a.k === 'parking' && A < 40000) {
+    if (false && a.k === 'parking') { // 停车场保持空场，画面更整齐
       // 车位：沿停车场主方向排布，2.5 m × 5 m，每两排之间留 6 m 车道
       const ang = mainAxis(a.p), ca = Math.cos(ang), sa = Math.sin(ang);
       const [x0, n0, x1, n1] = bboxOf(a.p);

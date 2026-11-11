@@ -149,6 +149,15 @@ for (const [sid, parts] of Object.entries(STAND_PARTS)) {
 // 看台的整体外轮廓（建筑本身）不再单独挤出，避免与座位模型重叠
 for (const id of [107371135, 1372223261, 1372223262]) usedForStands.add('way' + id);
 
+// ── 场馆红线：OSM 中“上海国际赛车场”（leisure=sports_centre）的边界 ──
+// 只保留红线以内（外扩 30 m）的地物，红线外统一铺成平整草地
+const VENUE = open(proj(elements.get('way156311798').geometry));
+const nearVenue = (pts) => {
+  const [cx, cn] = centroid(pts);
+  if (pip([cx, cn], VENUE)) return true;
+  return segDist([cx, cn], [...VENUE, VENUE[0]]) < 30;
+};
+
 // ── 建筑与建筑部件 ──
 const buildings = [];
 const parts = [...elements.values()].filter((e) => e.tags?.['building:part'] && e.type === 'way' && e.geometry);
@@ -160,7 +169,7 @@ for (const e of elements.values()) {
   if (!t.building && !isPart) continue;
   if (usedForStands.has(e.type + e.id)) continue;
   for (const { outer, holes } of polysOf(e)) {
-    if (!inRange(outer) || outer.length < 3) continue;
+    if (!inRange(outer) || outer.length < 3 || !nearVenue(outer)) continue;
     // 有建筑部件的建筑外轮廓按 OSM 3D 约定不渲染
     if (!isPart && t.building !== 'roof' && partCentroids.some((c) => pip(c, outer))) continue;
     const A = Math.abs(area(outer));
@@ -204,7 +213,8 @@ for (const e of elements.values()) {
   const k = AREA_KIND(t);
   if (!k) continue;
   for (const { outer, holes } of polysOf(e)) {
-    if (!inRange(outer)) continue;
+    if (!inRange(outer) || !nearVenue(outer)) continue;
+    if (k === 'residential' || k === 'farmland' || k === 'industrial' || k === 'retail' || k === 'cemetery') continue; // 与场馆无关的用地不画
     areas.push({ k, p: flat(outer), q: holes.map(flat), A: Math.round(Math.abs(area(outer))) });
   }
 }
@@ -236,7 +246,10 @@ for (const e of elements.values()) {
   if (!k) continue;
   const g = proj(e.geometry);
   if (!inRange(g)) continue;
-  lines.push({ k, w: r1(w), y, p: flat(g) });
+  // 线状地物：只保留落在红线内的部分（按点裁剪，避免高速公路等穿出红线）
+  const inside = g.filter((p) => pip(p, VENUE));
+  if (inside.length < 2 || k === 'rail' || k === 'road:motorway' || k === 'road:motorway_link') continue;
+  lines.push({ k, w: r1(w), y, p: flat(inside) });
 }
 
 // 统计与输出
@@ -262,6 +275,7 @@ const RAW = ${JSON.stringify(ENC)};
 export const OSM_TRACK = ${JSON.stringify(main.map(([x, n]) => [r1(x), r1(n)]))};
 export const OSM_PIT = ${JSON.stringify(pit.map(([x, n]) => [r1(x), r1(n)]))};
 export const OSM_STANDS = ${JSON.stringify(stands)};
+export const OSM_VENUE = ${JSON.stringify(flat(VENUE))};
 export const OSM_BUILDINGS = RAW.B.map((b) => ({ ...b, p: D(b.p), q: b.q.map(D) }));
 export const OSM_AREAS = RAW.A.map((a) => ({ ...a, p: D(a.p), q: a.q.map(D) }));
 export const OSM_LINES = RAW.L.map((l) => ({ ...l, p: D(l.p) }));

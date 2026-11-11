@@ -65,50 +65,16 @@ export function buildEnvironment(scene, track, stands, renderer) {
     }
   }, [90, 90]);
   // 底图：OSM 未标注用途的土地在这一带基本是农田与绿地
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), new THREE.MeshStandardMaterial({ map: grassTex, color: '#b9c98f', roughness: 1, depthWrite: false }));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), new THREE.MeshStandardMaterial({ map: grassTex, color: '#a9c487', roughness: 1, depthWrite: false }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   ground.renderOrder = -10;
   scene.add(ground);
 
-  // 远处农田色块
-  const fieldCols = ['#7fa64e', '#9bb35a', '#6f9a48', '#b7b871', '#5f8f46', '#a3a860'];
-  const fieldGeo = new THREE.PlaneGeometry(1, 1); fieldGeo.rotateX(-Math.PI / 2);
-  const fields = new THREE.InstancedMesh(fieldGeo, new THREE.MeshStandardMaterial({ roughness: 1 }), 90);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s3 = new THREE.Vector3(), p3 = new THREE.Vector3(), col = new THREE.Color();
   const up = new THREE.Vector3(0, 1, 0);
-  for (let i = 0; i < 90; i++) {
-    const a = rand() * Math.PI * 2, r = 2600 + rand() * 2600; // 只在 OSM 数据范围之外
-    p3.set(CENTER.x + Math.cos(a) * r, 0.03, CENTER.z + Math.sin(a) * r);
-    q.setFromAxisAngle(up, (rand() < 0.5 ? 0 : Math.PI / 2) + 0.12);
-    s3.set(180 + rand() * 380, 1, 120 + rand() * 260);
-    fields.setMatrixAt(i, m4.compose(p3, q, s3));
-    fields.setColorAt(i, col.set(fieldCols[(rand() * fieldCols.length) | 0]));
-  }
-  fields.receiveShadow = true;
-  fields.material.depthWrite = false;
-  fields.renderOrder = -9.5;
-  scene.add(fields);
 
   const nearStand = (x, z, pad = 0) => stands.some((s) => (s.center.x - x) ** 2 + (s.center.z - z) ** 2 < (s.radius + pad) ** 2);
-
-  // ── 远处城镇建筑 ──
-  const B = 520;
-  const bMat = lampMat('#d4d6da', '#ffcf8a', 0.22, { roughness: 0.8 });
-  const blocks = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), bMat, B);
-  for (let i = 0; i < B; i++) {
-    let x, z, tries = 0;
-    do {
-      const a = rand() * Math.PI * 2, r = 2550 + rand() * 2400; // 远景轮廓，只放在 OSM 数据范围之外
-      x = CENTER.x + Math.cos(a) * r; z = CENTER.z + Math.sin(a) * r;
-    } while (false);
-    const h = rand() < 0.85 ? 10 + rand() * 26 : 45 + rand() * 60;
-    p3.set(x, h / 2, z); q.setFromAxisAngle(up, 0.12); s3.set(26 + rand() * 60, h, 18 + rand() * 40);
-    blocks.setMatrixAt(i, m4.compose(p3, q, s3));
-    blocks.setColorAt(i, col.setHSL(0.08 + rand() * 0.06, 0.08, 0.72 + rand() * 0.2));
-  }
-  blocks.castShadow = true;
-  scene.add(blocks);
 
   // ── 赛道照明灯杆 ──
   const poles = [];
