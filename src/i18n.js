@@ -1,8 +1,8 @@
 // 中英双语：t('中文', 'English') 按当前语言取值；L(obj, 'name') 取数据里的 name / nameEn。
-// 切换语言不刷新页面：静态文字按 data-i18n 键替换，动态界面通过 onLang 注册的回调重绘。
+// 默认中文。切换语言不刷新页面：静态文字按 data-i18n 键替换，动态界面通过 onLang 注册的回调重绘。
 const KEY = 'sic-lang';
 const saved = (() => { try { return localStorage.getItem(KEY); } catch { return null; } })();
-export let lang = saved === 'en' || saved === 'zh' ? saved : (navigator.language || 'zh').toLowerCase().startsWith('zh') ? 'zh' : 'en';
+export let lang = saved === 'en' ? 'en' : 'zh'; // 默认中文；用户切换过则记住选择
 
 export const t = (zh, en) => (lang === 'en' ? en : zh);
 export const L = (o, k) => (lang === 'en' && o?.[k + 'En'] != null ? o[k + 'En'] : o?.[k]);

@@ -734,6 +734,7 @@ await step(1, tr('即将抵达上海', 'Arriving in Shanghai'));
 await splash?.finish();
 clock.getDelta();
 flyTo(HOME.pos, HOME.target, 2.8); // 开场镜头
+syncList(); // 按当前语言写入底部提示语（HTML 里的是中文占位）
 initGuide(); // 第一次打开时的新手引导
 onLang(() => {
   renderList(); renderDetail(); syncList();
