@@ -425,3 +425,10 @@ body:not([data-open='list']) .panel.left, body:not([data-open='info']) .panel.in
   .pill { padding: 8px 11px 8px 10px; font-size: 12.5px; }
   .sat-credit { left: 0; right: 0; text-align: center; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 46px); }
 }
+.share-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 860px) {
+  /* 昼夜切换在手机上只显示“另一种模式”的单个按钮，给分享按钮腾出位置 */
+  #themeSeg { padding: 4px; }
+  #themeSeg .seg-thumb, #themeSeg button.on { display: none; }
+  #themeSeg button { color: var(--text); padding: 6px 7px; }
+}

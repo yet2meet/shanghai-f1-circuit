@@ -531,13 +531,67 @@ function insidePoly(x, n, p) {
  * 草地看台上零星的观众（每 400 m² 约 1 人，F 约 30 人、J 约 30 人），面朝赛道，有站有坐。
  * 三个实例化网格（衣服 / 裤子 / 头）共 3 次绘制调用，开销可以忽略。
  */
-const PEOPLE = { shirt: null, legs: null, head: null };
-function peopleGeos() {
-  if (PEOPLE.shirt) return PEOPLE;
-  PEOPLE.shirt = new THREE.CylinderGeometry(0.2, 0.17, 0.62, 6).translate(0, 1.2, 0);
-  PEOPLE.legs = new THREE.CylinderGeometry(0.15, 0.12, 0.88, 6).translate(0, 0.44, 0);
-  PEOPLE.head = new THREE.SphereGeometry(0.12, 8, 6).translate(0, 1.66, 0);
-  return PEOPLE;
+// 低多边形人物：上衣（按实例换颜色）+ 其余部分（皮肤、裤子、鞋、头发用顶点色）；站姿、坐姿两套几何
+const PEOPLE = {};
+function seg(a, b, r1, r2, n = 7) {                // 两点之间的圆台（四肢）
+  const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A);
+  const g = new THREE.CylinderGeometry(r2, r1, d.length(), n, 1);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize()));
+  g.translate((A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2);
+  return g;
+}
+function ball(c, r, sx = 1, sy = 1, sz = 1) { const g = new THREE.SphereGeometry(r, 10, 8); g.scale(sx, sy, sz); g.translate(...c); return g; }
+function tint(g, hex) {
+  g = g.index ? g.toNonIndexed() : g;
+  for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
+  const c = new THREE.Color(hex), n = g.attributes.position.count, a = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3));
+  return g;
+}
+const strip = (g) => { g = g.index ? g.toNonIndexed() : g; for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k); return g; };
+function personGeos(pose) {
+  if (PEOPLE[pose]) return PEOPLE[pose];
+  const SKIN = '#ffffff', PANTS = '#2b3442', SHOE = '#3d424a', HAIR = '#2a211c';   // 皮肤用白色，由实例颜色给出肤色
+  const sit = pose === 'sit';
+  const hip = sit ? 0.14 : 0.92;                    // 骨盆高度
+  // 躯干：旋转体（臀 → 腰 → 胸 → 肩 → 颈根），前后压扁
+  const prof = [[0.001, 0], [0.16, 0.02], [0.155, 0.16], [0.145, 0.24], [0.17, 0.4], [0.2, 0.5], [0.19, 0.55], [0.07, 0.6], [0.001, 0.6]];
+  const torso = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 10);
+  torso.scale(1, 1, 0.62); torso.translate(0, hip, 0);
+  const sh = hip + 0.52;                            // 肩高
+  const shirt = [torso];
+  const rest = [];
+  // 头、颈、头发
+  rest.push(tint(seg([0, sh, 0], [0, sh + 0.12, 0.01], 0.045, 0.042), SKIN));
+  rest.push(tint(ball([0, sh + 0.22, 0.01], 0.105, 0.95, 1.15, 1.05), SKIN));
+  const hair = new THREE.SphereGeometry(0.112, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.52);
+  hair.scale(0.98, 1.08, 1.08); hair.translate(0, sh + 0.235, -0.008);
+  rest.push(tint(hair, HAIR));
+  if (!sit) {
+    // 站姿：双腿、鞋，双臂自然下垂、略外张
+    for (const s of [-1, 1]) {
+      rest.push(tint(seg([s * 0.085, hip, 0], [s * 0.09, 0.47, 0.01], 0.072, 0.058), PANTS));
+      rest.push(tint(seg([s * 0.09, 0.47, 0.01], [s * 0.09, 0.07, 0], 0.056, 0.045), PANTS));
+      rest.push(tint(ball([s * 0.09, 0.04, 0.05], 0.06, 0.85, 0.55, 1.7), SHOE));
+      shirt.push(seg([s * 0.2, sh - 0.02, 0], [s * 0.25, sh - 0.3, 0], 0.055, 0.05));       // 短袖
+      rest.push(tint(seg([s * 0.25, sh - 0.3, 0], [s * 0.27, sh - 0.6, 0.04], 0.042, 0.036), SKIN));
+      rest.push(tint(ball([s * 0.272, sh - 0.65, 0.05], 0.042, 0.8, 1.1, 0.9), SKIN));
+    }
+  } else {
+    // 坐姿：坐在草坡上，屈膝，双手搭在膝盖上
+    for (const s of [-1, 1]) {
+      const knee = [s * 0.1, 0.42, 0.36], foot = [s * 0.11, 0.06, 0.55];
+      rest.push(tint(seg([s * 0.085, hip + 0.02, 0.02], knee, 0.075, 0.06), PANTS));
+      rest.push(tint(seg(knee, foot, 0.058, 0.045), PANTS));
+      rest.push(tint(ball([foot[0], 0.04, foot[2] + 0.05], 0.06, 0.85, 0.55, 1.7), SHOE));
+      shirt.push(seg([s * 0.2, sh - 0.02, 0.02], [s * 0.21, sh - 0.27, 0.15], 0.055, 0.05));
+      rest.push(tint(seg([s * 0.21, sh - 0.27, 0.15], [s * 0.13, 0.48, 0.33], 0.042, 0.036), SKIN));
+      rest.push(tint(ball([s * 0.12, 0.47, 0.35], 0.042, 0.9, 0.9, 1.1), SKIN));
+    }
+  }
+  PEOPLE[pose] = { shirt: mergeGeometries(shirt.map(strip)), rest: mergeGeometries(rest) };
+  return PEOPLE[pose];
 }
 function addGrassFans(g, part, spec) {
   const p = part.poly, N = p.length / 2;
@@ -560,27 +614,29 @@ function addGrassFans(g, part, spec) {
     }
   }
   if (!spots.length) return;
-  const G = peopleGeos();
-  const skin = ['#f1c9a5', '#e0ac85', '#c68863', '#8d5a3b'];
-  const tees = ['#e10600', '#ff8000', '#1e5bc6', '#27f4d2', '#f5c518', '#ffffff', '#1b1b1f', '#2fae66', '#ff87bc', '#64c4ff'];
-  const mk = (geo, mat) => { const m = new THREE.InstancedMesh(geo, mat, spots.length); m.castShadow = true; return m; };
-  const shirt = mk(G.shirt, floodlit(new THREE.MeshStandardMaterial({ roughness: 0.8 }), 0.3));
-  const legs = mk(G.legs, std('#2b3240', { roughness: 0.9 }, 0.2));
-  const head = mk(G.head, floodlit(new THREE.MeshStandardMaterial({ roughness: 0.7 }), 0.3));
-  const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s3 = new THREE.Vector3(), v3 = new THREE.Vector3(), c = new THREE.Color();
+  const skin = ['#f3d2b4', '#e8bc96', '#d29f78', '#a8714d', '#7a4e33'];
+  const tees = ['#e10600', '#ff8000', '#1e5bc6', '#27f4d2', '#f5c518', '#ffffff', '#1b1b1f', '#2fae66', '#ff87bc', '#64c4ff', '#8a1538', '#c9ccd1'];
+  const shirtMat = floodlit(new THREE.MeshStandardMaterial({ roughness: 0.85 }), 0.3);
+  const restMat = floodlit(new THREE.MeshStandardMaterial({ roughness: 0.75, vertexColors: true }), 0.3);
+  const poses = { stand: [], sit: [] };
   const fx = part.f[0], fn = part.f[1];
-  spots.forEach(([x, n], i) => {
-    const sit = rand() < 0.55;                                           // 一半以上坐在草坡上
-    const yaw = Math.atan2(fx, -fn) + (rand() - 0.5) * 0.9;              // 大致面朝赛道
-    q4.setFromAxisAngle(UP, yaw);
-    const h = 0.92 + rand() * 0.16;
-    s3.set(h, sit ? h * 0.62 : h, h);
-    m4.compose(v3.set(x, 1.5, -n), q4, s3);
-    shirt.setMatrixAt(i, m4); legs.setMatrixAt(i, m4); head.setMatrixAt(i, m4);
-    shirt.setColorAt(i, c.set(tees[Math.floor(rand() * tees.length)]));
-    head.setColorAt(i, c.set(skin[Math.floor(rand() * skin.length)]));
-  });
-  g.add(shirt, legs, head);
+  for (const [x, n] of spots) poses[rand() < 0.55 ? 'sit' : 'stand'].push([x, n]);   // 一半以上坐在草坡上
+  const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s3 = new THREE.Vector3(), v3 = new THREE.Vector3(), c = new THREE.Color();
+  for (const [pose, list] of Object.entries(poses)) {
+    if (!list.length) continue;
+    const G = personGeos(pose);
+    const shirt = new THREE.InstancedMesh(G.shirt, shirtMat, list.length), rest = new THREE.InstancedMesh(G.rest, restMat, list.length);
+    shirt.castShadow = rest.castShadow = true;
+    list.forEach(([x, n], i) => {
+      q4.setFromAxisAngle(UP, Math.atan2(fx, -fn) + (rand() - 0.5) * 0.8);  // 大致面朝赛道
+      const h = 0.93 + rand() * 0.14;
+      m4.compose(v3.set(x, 1.5, -n), q4, s3.set(h, h, h));
+      shirt.setMatrixAt(i, m4); rest.setMatrixAt(i, m4);
+      shirt.setColorAt(i, c.set(tees[Math.floor(rand() * tees.length)]));
+      rest.setColorAt(i, c.set(skin[Math.floor(rand() * skin.length)]));
+    });
+    g.add(shirt, rest);
+  }
 }
 
 function buildGrass(spec, mats, common) {

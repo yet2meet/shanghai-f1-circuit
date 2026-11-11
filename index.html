@@ -7,13 +7,27 @@
   <title>上海国际赛车场 · Shanghai International Circuit</title>
   <meta name="description" content="上海国际赛车场 · F1 中国大奖赛主场：赛道、看台与票价、座位视角，白天与黑夜。" />
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-  <link rel="apple-touch-icon" href="./favicon.svg" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+  <!-- 分享卡片（微信、QQ、iMessage、Telegram、X 等读取） -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="上海国际赛车场 · Shanghai International Circuit" />
+  <meta property="og:title" content="上海国际赛车场 · F1 中国大奖赛" />
+  <meta property="og:description" content="按真实测绘数据还原的赛道、看台与建筑：看台与官方票价、座位视角、卫星图，中英双语。" />
+  <meta property="og:url" content="https://shanghai-f1-circuit.pages.dev/" />
+  <meta property="og:image" content="https://shanghai-f1-circuit.pages.dev/og.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="上海国际赛车场 · F1 中国大奖赛" />
+  <meta name="twitter:image" content="https://shanghai-f1-circuit.pages.dev/og.jpg" />
   <meta name="theme-color" content="#e10600" />
   <meta name="author" content="yet2meet" />
   <meta name="copyright" content="© 2026 yet2meet. All rights reserved." />
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
+  <!-- 微信内置浏览器分享时会取页面里的第一张图片作为缩略图 -->
+  <div style="display:none"><img src="./apple-touch-icon.png" alt="" /></div>
   <canvas id="scene"></canvas>
   <div id="labels"></div>
 

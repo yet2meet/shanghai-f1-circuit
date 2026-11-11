@@ -4,9 +4,9 @@ import { TEAMS } from './data.js';
 import { floodlit } from './util.js';
 
 export function buildCars(scene, track) {
-  // 22 辆车（11 支车队 × 2）：每种材质一个实例化网格，涂装颜色逐车设置，总共只需 10 次绘制调用
+  // 11 辆车（每支车队 1 辆，画面不显拥挤）：每种材质一个实例化网格，涂装颜色逐车设置
   const geo = f1CarGeometry();
-  const n = TEAMS.length * 2;
+  const n = TEAMS.length;
   const base = carMaterials({ livery: ['#ffffff', '#ffffff', '#ffffff'], compound: '#ffffff' }, floodlit);
   const inst = {};
   const col = new THREE.Color();
@@ -16,7 +16,7 @@ export function buildCars(scene, track) {
     im.castShadow = k === 'paint' || k === 'carbon';
     im.frustumCulled = false;
     for (let i = 0; i < n; i++) {
-      const t = TEAMS[(i / 2) | 0], L = t.livery || [t.color, '#1b1b1f', t.color];
+      const t = TEAMS[i], L = t.livery || [t.color, '#1b1b1f', t.color];
       const cc = { paint: L[0], secondary: L[1], accent: L[2], stripe: ['#e10600', '#ffd400', '#f2f2f2'][i % 3] }[k];
       if (cc) im.setColorAt(i, col.set(cc));
     }
@@ -28,7 +28,7 @@ export function buildCars(scene, track) {
   scene.add(rear);
   const all = [...Object.values(inst), rear];
   const cars = [];
-  for (let i = 0; i < n; i++) cars.push({ g: new THREE.Object3D(), s: track.total * ((0.08 + i * 0.041) % 1) + ((i * 37) % 11), lane: ((i * 13) % 7 - 3) * 0.6 });
+  for (let i = 0; i < n; i++) cars.push({ g: new THREE.Object3D(), s: track.total * (i / n) + ((i * 37) % 23), lane: ((i * 13) % 7 - 3) * 0.6 }); // 沿一圈大致均匀分布
   // ── 行车线：按真实弧长等距重采样（2 m），再把“弯中靠内”的偏移和走线本身都平滑，
   // 车头方向取行车线的切线并插值，过弯是连续的圆弧而不是折线 ──
   const N = track.N, M = Math.round(track.total / 2), step = track.total / M;
