@@ -162,6 +162,12 @@ const nearVenue = (pts) => {
   return segDist([cx, cn], [...VENUE, VENUE[0]]) < 30;
 };
 
+// 内场卡丁车场（上赛卡丁车：全长 1.234 km、18 个弯）——OSM 中为一条 1235 m 的闭合 raceway + 维修/连接道
+const KART_LOOP = 'way329189199';
+const KART_IDS = new Set([KART_LOOP, 'way329189200', 'way329189201', 'way329189202', 'way329189204', 'way164317396', 'way164317403', 'way164317405']);
+// 卡丁车场旁的配套建筑（与赛道由同一批 OSM 编辑录入，位置紧邻卡丁车场入口）
+const KART_BUILDINGS = new Set(['way164317393', 'way164317417', 'way164317421', 'way164317423', 'way329189203']);
+
 // ── 建筑与建筑部件 ──
 const buildings = [];
 const parts = [...elements.values()].filter((e) => e.tags?.['building:part'] && e.type === 'way' && e.geometry);
@@ -183,7 +189,11 @@ for (const e of elements.values()) {
     const kind = isPart ? (t['building:part'] === 'roof' ? 'roof' : 'part') : t.building;
     if (kind === 'roof' && !t.min_height) { mh = t.height ? h - 0.8 : 5.5; if (!t.height) h = 6.2; }
     if (t.building === 'roof') { mh = 4.6; h = 5.2; }
-    buildings.push({ k: kind, h: r1(h), m: r1(mh), r: t['roof:shape'] || '', n: t.name || '', p: flat(outer), q: holes.map(flat) });
+    const b = { k: kind, h: r1(h), m: r1(mh), r: t['roof:shape'] || '', n: t.name || '', p: flat(outer), q: holes.map(flat) };
+    if (t.amenity) b.a = t.amenity;                                   // 如 toilets（公共卫生间）
+    if (KART_BUILDINGS.has(e.type + e.id)) b.a = 'kart';
+    if (t['building:material']) b.g = t['building:material'];         // 如 glass
+    buildings.push(b);
   }
 }
 
@@ -234,6 +244,7 @@ for (const e of elements.values()) {
   if (t.highway === 'raceway') {
     if (e.type + e.id === MAIN_ID || PIT_IDS.includes(e.type + e.id)) continue;
     k = 'raceway'; w = 11;
+    if (KART_IDS.has(e.type + e.id)) { k = e.type + e.id === KART_LOOP ? 'kart' : 'kartlink'; w = e.type + e.id === KART_LOOP ? 8 : 6; }
   } else if (t.highway && ROAD_W[t.highway] && !t.area) {
     if (t.tunnel) continue;
     k = 'road:' + t.highway; w = ROAD_W[t.highway];

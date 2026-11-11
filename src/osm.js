@@ -77,7 +77,7 @@ function strip(p, w, yFn = () => 0, off = 0) {
       pos.push(x + nx * o, y, -(n + nn * o));
       uv.push(dist[i] / 4, s > 0 ? 0 : 1);
     }
-    if (i) { const q = i * 2; idx.push(q - 2, q, q - 1, q - 1, q, q + 1); }
+    if (i) { const q = i * 2; idx.push(q - 2, q - 1, q, q - 1, q + 1, q); } // 朝上的面（之前朝下，被背面剔除）
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -131,6 +131,18 @@ function splitCapsSides(geo) {
     out.push(part);
   }
   return out;
+}
+
+/** 侧墙 UV 以米计：u 沿墙面水平方向，v 为离地高度（减去 base），便于贴按层高绘制的立面贴图 */
+function wallUV(g, base = 0) {
+  const pos = g.attributes.position.array, nor = g.attributes.normal.array, uv = new Float32Array((pos.length / 3) * 2);
+  for (let i = 0; i < pos.length / 3; i++) {
+    const nx = nor[i * 3], nz = nor[i * 3 + 2], L = Math.hypot(nx, nz) || 1;
+    uv[i * 2] = pos[i * 3] * (-nz / L) + pos[i * 3 + 2] * (nx / L);
+    uv[i * 2 + 1] = pos[i * 3 + 1] - base;
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return g;
 }
 
 /** 把非索引几何按法线朝上 / 朝下拆成两份（顶面、底面） */
@@ -257,6 +269,12 @@ export function buildOSM(scene) {
   const waterMat = floodlit(new THREE.MeshStandardMaterial({ color: AREA.water[0], roughness: 0.18, metalness: 0.25 }), 0.08);
   waterMat.depthWrite = false;
   for (const [k, list] of Object.entries(byKind)) {
+    if (k === 'water') {
+      // 景观水池的石砌驳岸（沿水面轮廓的浅色窄带）
+      const rims = [];
+      for (const a of OSM_AREAS) if (a.k === 'water' && polyArea(a.p) < 20000) { const r = strip([...a.p, a.p[0], a.p[1]], 1.3, () => 0.05); if (r) rims.push(r); }
+      if (rims.length) { const rm = new THREE.Mesh(mergeGeometries(rims), groundMat('#d8d2c4', 0.1)); rm.position.y = 0.02; root.add(asGround(rm, -3.9)); }
+    }
     const mat = k === 'water' ? waterMat : groundMat(AREA[k][0], 0.08);
     const m = new THREE.Mesh(mergeGeometries(list), mat);
     m.position.y = 0.02;
@@ -403,9 +421,52 @@ export function buildOSM(scene) {
   nightEmissives.push({ m: MAT.towerGlass, max: 0.7 });                              // 维修楼一侧的绿蓝色玻璃圆塔
   MAT.roofSteel = std('#c3c8cf', { roughness: 0.4, metalness: 0.5 }, 0.25);            // 主看台悬挑钢顶棚：顶面银灰
   MAT.roofUnder = std('#7d848d', { roughness: 0.55, metalness: 0.35 }, 0.35);           // 底面：深一档的金属吊顶，避免与天空混成一片
+  // ── 场内配套建筑的立面（按米贴图：u = 沿墙米数，v = 离地高度）──
+  const facade = (tw, th, draw, litDraw, glow = 0.2) => {
+    const tex = canvasTex(128, Math.round(128 * th / tw), (c, w, h) => draw(c, w, h));
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(1 / tw, 1 / th);
+    const m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, metalness: 0.15 });
+    if (litDraw) {
+      const lit = canvasTex(128, Math.round(128 * th / tw), (c, w, h) => { c.fillStyle = '#000'; c.fillRect(0, 0, w, h); litDraw(c, w, h); });
+      lit.wrapS = lit.wrapT = THREE.RepeatWrapping; lit.repeat.copy(tex.repeat);
+      m.emissive = new THREE.Color('#ffd9a0'); m.emissiveMap = lit; m.emissiveIntensity = 0;
+      nightEmissives.push({ m, max: 0.8 });
+    }
+    return floodlit(m, glow);
+  };
+  // 一般配套楼：银灰金属板 + 每层一条深色带形窗（层高 3.4 m）
+  MAT.service = facade(4, 3.4, (c, w, h) => {
+    c.fillStyle = '#cfd3d9'; c.fillRect(0, 0, w, h);
+    c.fillStyle = 'rgba(0,0,0,0.06)'; c.fillRect(0, 0, 2, h);
+    c.fillStyle = '#4b5b6a'; c.fillRect(0, h * 0.18, w, h * 0.42);
+    c.fillStyle = 'rgba(255,255,255,0.18)'; c.fillRect(0, h * 0.18, w, h * 0.06);
+    c.fillStyle = '#b9bec5'; c.fillRect(w * 0.49, h * 0.18, w * 0.02, h * 0.42);
+  }, (c, w, h) => { c.fillStyle = '#fff'; c.fillRect(0, h * 0.2, w, h * 0.38); });
+  // 玻璃配套楼（OSM building:material = glass）：通高玻璃幕墙 + 竖梃
+  MAT.glassBox = facade(1.6, 3.4, (c, w, h) => {
+    const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#7fa3b4'); g.addColorStop(1, '#4f6f80');
+    c.fillStyle = g; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#dfe4e9'; c.fillRect(0, 0, w * 0.05, h); c.fillRect(0, 0, w, h * 0.05);
+  }, (c, w, h) => { c.fillStyle = '#fff'; c.fillRect(w * 0.08, h * 0.1, w * 0.84, h * 0.85); });
+  MAT.glassBox.metalness = 0.6; MAT.glassBox.roughness = 0.12;
+  // 公共卫生间（OSM amenity = toilets）：白墙、深色门洞、顶部百叶通风带、蓝色标识带 + WC 字样
+  MAT.toilet = facade(6, 4.2, (c, w, h) => {
+    const y = (m) => h - (m / 4.2) * h;              // 米 → 画布 y（画布顶部 = 墙顶）
+    c.fillStyle = '#f1f2f3'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#8f98a3'; for (let k = 0; k < 6; k++) c.fillRect(0, y(3.85 - k * 0.12), w, 2);   // 百叶
+    c.fillStyle = '#1f6fb2'; c.fillRect(0, y(3.15), w, y(2.6) - y(3.15));                          // 标识带
+    c.fillStyle = '#fff'; c.font = '800 ' + Math.round((y(2.6) - y(3.15)) * 0.8) + 'px Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('WC', w * 0.5, (y(3.15) + y(2.6)) / 2 + 1);
+    c.beginPath(); c.arc(w * 0.25, y(3.0), 2.4, 0, 7); c.arc(w * 0.75, y(3.0), 2.4, 0, 7); c.fill();          // 男女图标
+    c.fillRect(w * 0.25 - 2, y(2.88), 4, 6); c.beginPath(); c.moveTo(w * 0.75 - 4, y(2.66)); c.lineTo(w * 0.75 + 4, y(2.66)); c.lineTo(w * 0.75, y(2.9)); c.fill();
+    c.fillStyle = '#3a4048'; c.fillRect(w * 0.4, y(2.3), w * 0.2, y(0) - y(2.3));                    // 门洞
+    c.fillStyle = '#c7ccd2'; c.fillRect(0, y(0.3), w, y(0) - y(0.3));                                // 勒脚
+  }, (c, w, h) => { c.fillStyle = '#fff'; c.fillRect(0, h - (3.15 / 4.2) * h, w, (0.55 / 4.2) * h); }, 0.3);
+  MAT.kartRoof = std('#e94e1b', { roughness: 0.5, metalness: 0.2 }, 0.3);   // 卡丁车场配套楼屋面：橙色
   MAT_REF = MAT;
+  const kartBuildings = [];
   const bucket = new Map();
-  const put = (mat, g) => { if (!bucket.has(mat)) bucket.set(mat, []); bucket.get(mat).push(g); };
+  const put = (mat, g) => { if (g.index) g = g.toNonIndexed(); if (!bucket.has(mat)) bucket.set(mat, []); bucket.get(mat).push(g); };
   const venueZone = (p) => { const [x0, n0, x1, n1] = bboxOf(p); const cx = (x0 + x1) / 2, cn = (n0 + n1) / 2; return cx > -900 && cx < 560 && cn > -620 && cn < 640; };
   for (const b of OSM_BUILDINGS) {
     const A = polyArea(b.p);
@@ -436,6 +497,33 @@ export function buildOSM(scene) {
     geo.rotateX(-Math.PI / 2);
     geo.translate(0, b.m, 0);
     const [caps, sides] = splitCapsSides(geo);
+    if (isVenue && (b.a === 'toilets' || b.a === 'kart' || (b.g === 'glass' && b.k !== 'roof') || (b.k === 'yes' && hh >= 3))) {
+      // 场内配套建筑：卫生间亭、卡丁车场配套楼、玻璃小楼、一般配套楼
+      const S = sides || caps;
+      if (b.a === 'toilets') {
+        // 卫生间按真实尺度做成 4.2 m 高的单层亭子 + 外挑 0.6 m 的薄屋面板
+        const k = 4.2 / hh; S.scale(1, k, 1); S.translate(0, b.m * (1 - k), 0);
+        put(MAT.toilet, wallUV(S, b.m));
+        const slab = new THREE.ExtrudeGeometry(shapeOf(b.p, b.q), { depth: 0.12, bevelEnabled: true, bevelThickness: 0.08, bevelSize: 0.6, bevelSegments: 1 });
+        slab.rotateX(-Math.PI / 2); slab.translate(0, b.m + 4.3, 0);
+        put(MAT.venueRoof, slab.index ? slab.toNonIndexed() : slab);
+        continue;
+      }
+      put(b.a === 'kart' ? MAT.kartRoof : MAT.venueRoof, caps);
+      put(b.g === 'glass' || b.a === 'kart' ? MAT.glassBox : MAT.service, wallUV(S, b.m));
+      // 屋顶设备：较大的楼放几台空调外机 / 风机
+      if (A > 300) {
+        const [x0, n0, x1, n1] = bboxOf(b.p);
+        for (let k = 0, tries = 0; k < Math.min(6, Math.round(A / 250)) && tries < 40; tries++) {
+          const x = x0 + rand() * (x1 - x0), n = n0 + rand() * (n1 - n0);
+          if (!inside(x, n, b.p) || !inside(x + 2, n, b.p) || !inside(x - 2, n, b.p) || !inside(x, n + 2, b.p) || !inside(x, n - 2, b.p)) continue;
+          const u = new THREE.BoxGeometry(2.4, 1.3, 1.6); u.rotateY(rand() * 3); u.translate(x, b.h + 0.65, -n);
+          put(MAT.steel, u); k++;
+        }
+      }
+      if (b.a === 'kart') kartBuildings.push(b);
+      continue;
+    }
     if (isVenue) {
       // 白色膜结构只给顶棚：主看台顶棚（高 35 m）与 H/K 荷叶顶棚（多边形点数多）；其余屋面为中灰
       const lotus = b.k === 'roof' && b.p.length >= 40;            // H/K 荷叶膜顶棚：白色
@@ -483,6 +571,26 @@ export function buildOSM(scene) {
     const m = new THREE.Mesh(mergeGeometries(list), mat);
     m.castShadow = m.receiveShadow = true;
     root.add(m);
+  }
+  // 卡丁车场配套楼的屋顶招牌（上赛卡丁车）
+  if (kartBuildings.length) {
+    const big = kartBuildings.reduce((a, b) => (polyArea(b.p) > polyArea(a.p) ? b : a));
+    const P = principal(big.p);
+    const signTex = canvasTex(512, 96, (c, w, h) => {
+      c.fillStyle = '#16181c'; c.fillRect(0, 0, w, h);
+      c.fillStyle = '#e94e1b'; c.fillRect(0, h - 10, w, 10);
+      c.fillStyle = '#fff'; c.font = '800 46px "PingFang SC", "Microsoft YaHei", Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText('上赛卡丁车  SIC KART', w / 2, h / 2 - 4);
+    });
+    const sm = new THREE.MeshStandardMaterial({ map: signTex, emissive: '#ffffff', emissiveMap: signTex, emissiveIntensity: 0.15, side: THREE.DoubleSide });
+    nightEmissives.push({ m: sm, max: 1.2 });
+    const w = Math.min(24, P.L * 0.6), sh = w * 96 / 512;
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(w, sh), sm);
+    sign.position.set(P.cx, big.h + 0.4 + sh / 2, -P.cn);
+    sign.rotation.y = Math.atan2(P.un, P.ux);
+    const legs = new THREE.Mesh(new THREE.BoxGeometry(w * 0.9, 0.4, 0.2), MAT.steel);
+    legs.position.set(P.cx, big.h + 0.2, -P.cn); legs.rotation.y = sign.rotation.y;
+    root.add(sign, legs);
   }
 
   // ── 树 ──

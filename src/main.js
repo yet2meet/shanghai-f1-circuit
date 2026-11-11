@@ -13,6 +13,8 @@ import { buildVenue } from './venue.js';
 import { buildEnvironment, applyTime, fitShadow } from './environment.js';
 import { buildCars } from './cars.js';
 import { buildOSM } from './osm.js';
+import { buildKarting } from './karting.js';
+import { initGuide } from './guide.js';
 import { buildPitBuilding } from './pitbuilding.js';
 
 const $ = (s) => document.querySelector(s);
@@ -73,6 +75,7 @@ const pitb = buildPitBuilding(scene, brand);
 const venue = buildVenue(scene, track, pitb);
 await step(0.68, '加载周边道路、水系与建筑');
 const osm = buildOSM(scene);
+const karting = buildKarting(scene);
 await step(0.72, '种植草木与周边环境');
 const env = buildEnvironment(scene, track, stands, renderer);
 const cars = buildCars(scene, track);
@@ -644,6 +647,7 @@ function tick(dt) {
   }
   if (pointer && !fly && !down?.dragging) pick(pointer.x, pointer.y);
   cars.update(dt);
+  karting.update(dt);
   composer.render();
   updateLabels();
   updateMinimap();
@@ -659,6 +663,7 @@ await step(1, '即将抵达上海');
 await splash?.finish();
 clock.getDelta();
 flyTo(HOME.pos, HOME.target, 2.8); // 开场镜头
+initGuide(); // 第一次打开时的新手引导
 requestAnimationFrame(frame);
 
 window.__app = { state, camera, controls, scene, renderer, stands, selectStand, enterSeats, goHome, setNight, toggleSeat, seatView, track, dolly, get seatCam() { return seatCam; }, perf };
