@@ -76,11 +76,15 @@ function buildSeatPart(spec, part, pi, ctx) {
   body.castShadow = body.receiveShadow = true;
   G.add(body);
   // 后墙与立面
-  const backWall = new THREE.Mesh(new THREE.BoxGeometry(L, H + 1.4, 0.4), mats.white);
-  backWall.position.set(0, (H + 1.4) / 2, D - 0.2);
-  backWall.castShadow = true;
-  G.add(backWall);
-  if (H > 10) {
+  if (spec.realMain) {
+    buildMainRear(G, L, D, H, mats, spec);
+  } else {
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(L, H + 1.4, 0.4), mats.white);
+    backWall.position.set(0, (H + 1.4) / 2, D - 0.2);
+    backWall.castShadow = true;
+    G.add(backWall);
+  }
+  if (H > 10 && !spec.realMain) {
     const band = new THREE.Mesh(new THREE.BoxGeometry(L * 0.98, 2.2, 0.15), mats.glass);
     band.position.set(0, H * 0.45, D + 0.02);
     G.add(band);
@@ -98,8 +102,20 @@ function buildSeatPart(spec, part, pi, ctx) {
   wall.position.set(0, (lay.base - 0.1) / 2, -0.15);
   G.add(wall);
   // 层间挑檐：深色饰面 + 灯带
-  tierInfo.forEach((ti) => {
+  tierInfo.forEach((ti, k) => {
     if (ti.lipZ === undefined) return;
+    if (spec.realMain) {
+      // 两层之间的包厢层：通长玻璃带 + 竖梃 + 上方灯带（施工报道：24 个大小包厢）
+      const lift = lay.tiers[k + 1].lift ?? 3;
+      const glassBand = new THREE.Mesh(new THREE.BoxGeometry(L, lift - 0.5, 0.12), mats.vipGlass);
+      glassBand.position.set(0, ti.lipY + 0.25 + (lift - 0.5) / 2, ti.lipZ - 0.06);
+      G.add(glassBand);
+      for (let x = -L / 2; x <= L / 2 + 0.01; x += 2.0) ctx.rails.seg(G, [x, ti.lipY + 0.2, ti.lipZ - 0.12], [x, ti.lipY + lift - 0.2, ti.lipZ - 0.12], 0.045);
+      const led = new THREE.Mesh(new THREE.BoxGeometry(L, 0.28, 0.2), mats.led);
+      led.position.set(0, ti.lipY + lift - 0.1, ti.lipZ - 0.1);
+      G.add(led);
+      return;
+    }
     const fascia = new THREE.Mesh(new THREE.BoxGeometry(L, 1.4, 0.3), mats.dark);
     fascia.position.set(0, ti.lipY + 2.2, ti.lipZ - 0.15);
     const led = new THREE.Mesh(new THREE.BoxGeometry(L, 0.3, 0.32), mats.led);
@@ -197,8 +213,69 @@ function buildSeatPart(spec, part, pi, ctx) {
   G.add(hb);
   ctx.hitboxes.push(hb);
 
+  if (spec.realMain && spec.roofBottom) buildMainRoofUnderside(G, Math.min(L, spec.roofLength ?? L), D, spec.roofBottom, mats, ctx);
   partOf.push({ f, rotY, front, L, D, H, G, pick });
   return G;
+}
+
+/** 主看台后立面：外露的灰色混凝土框架（约 8 m 柱网）+ 16 部外部楼梯间 + 不锈钢网板（据实拍照片与施工报道） */
+function buildMainRear(G, L, D, H, mats, spec) {
+  const top = H + 1.4;
+  // 框架后的深色内凹面，让框架显得是“透空”的
+  const recess = new THREE.Mesh(new THREE.BoxGeometry(L, top, 0.3), mats.dark);
+  recess.position.set(0, top / 2, D - 2.6);
+  G.add(recess);
+  // 柱：约 8 m 一根（施工报道：底层约 250 根柱，间距约 8 m）
+  const nCol = Math.round(L / 8);
+  const colGeo = new THREE.BoxGeometry(1.1, top, 1.1);
+  const cols = new THREE.InstancedMesh(colGeo, mats.frame, nCol + 1);
+  const m4 = new THREE.Matrix4();
+  for (let i = 0; i <= nCol; i++) cols.setMatrixAt(i, m4.makeTranslation(-L / 2 + (i * L) / nCol, top / 2, D - 0.55));
+  cols.castShadow = true;
+  G.add(cols);
+  // 楼层梁：与座位分层对应
+  for (const y of [2.74, 7.4, 12.1, 15.6, 21.3, top - 0.4]) {
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(L, 0.75, 1.3), mats.frame);
+    beam.position.set(0, y, D - 0.65);
+    G.add(beam);
+  }
+  // 16 部外部楼梯间：向外凸出的竖向楼梯塔，正面挂不锈钢网板
+  const nStair = 16;
+  for (let i = 0; i < nStair; i++) {
+    const x = -L / 2 + ((i + 0.5) * L) / nStair;
+    const core = new THREE.Mesh(new THREE.BoxGeometry(6.5, top + 2.5, 5), mats.frame);
+    core.position.set(x, (top + 2.5) / 2, D + 2.4);
+    core.castShadow = true;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(5.6, top + 1), mats.steelMesh);
+    mesh.position.set(x, (top + 1) / 2 + 0.6, D + 4.95);
+    G.add(core, mesh);
+  }
+}
+
+/** 主看台顶棚底面：43 根钢柱（施工方案：12.72–28 m 区段钢柱 43 根）+ 红黄圆盘 + 前沿灯具 */
+function buildMainRoofUnderside(G, L, D, roofBottom, mats, ctx) {
+  const n = 43;
+  for (let i = 0; i < n; i++) {
+    const x = -L / 2 + ((i + 0.5) * L) / n;
+    ctx.rails.seg(G, [x, 12.7, D + 0.6], [x, roofBottom, D + 0.6], 0.42);
+  }
+  // 顶棚底面的红、黄圆盘（实拍照片可见；“灯笼”寓意来自单一来源，未证实）
+  const disc = new THREE.CircleGeometry(2.2, 32);
+  disc.rotateX(Math.PI / 2); // 朝下
+  const red = new THREE.InstancedMesh(disc, mats.discRed, 64), yel = new THREE.InstancedMesh(disc, mats.discYellow, 64);
+  let nr = 0, ny = 0;
+  const m4 = new THREE.Matrix4(), v = new THREE.Vector3();
+  for (let x = -L / 2 + 8, k = 0; x < L / 2 - 4; x += 14, k++) {
+    for (const [z, alt] of [[9, 0], [24, 1]]) {
+      v.set(x + (alt ? 7 : 0), roofBottom - 0.06, z).applyMatrix4(G.matrixWorld);
+      m4.makeTranslation(v.x, v.y, v.z);
+      if ((k + alt) % 2 === 0 && nr < 64) red.setMatrixAt(nr++, m4); else if (ny < 64) yel.setMatrixAt(ny++, m4);
+    }
+  }
+  red.count = nr; yel.count = ny;
+  ctx.extra.push(red, yel);
+  // 顶棚前沿下方的照明灯具
+  for (let x = -L / 2 + 5; x < L / 2; x += 10) ctx.rails.seg(G, [x - 0.6, roofBottom - 0.35, 3], [x + 0.6, roofBottom - 0.35, 3], 0.2);
 }
 
 /** 圆柱/细杆批量实例化：rails.seg(G, a, b, r) 在组 G 的局部坐标中画一段 */
@@ -228,11 +305,12 @@ function buildSeatStand(spec, mats, seatGeo, common) {
   const ctx = {
     mats, seats: [], base: [], rot: [], partOf: [], blocks: [], blockMap: new Map(),
     rand: rng(spec.id.charCodeAt(0) * 7919),
-    rails: railBatcher(mats.steel), glassPanels: [], nosing: [], carpet: [], hitboxes: common.hitboxes, hitMat: common.hitMat, colorMat: common.colorMat,
+    rails: railBatcher(mats.steel), glassPanels: [], nosing: [], carpet: [], extra: [], hitboxes: common.hitboxes, hitMat: common.hitMat, colorMat: common.colorMat,
   };
   const parts = OSM_STANDS[spec.id];
   parts.forEach((part, pi) => g.add(buildSeatPart(spec, part, pi, ctx)));
   g.add(ctx.rails.build());
+  ctx.extra.forEach((m) => g.add(m));
   // 栏杆玻璃面板（合并成一个网格）
   const panels = ctx.glassPanels.map(({ G, L, y, z }) => {
     const geo = new THREE.PlaneGeometry(L, 1.0);
@@ -419,6 +497,11 @@ export function buildStands(scene) {
     led: lampMat('#ffffff', '#ffffff', 3),
     seat: floodlit(new THREE.MeshStandardMaterial({ roughness: 0.55 }), 0.58),
     nosing: std('#f5c518', { roughness: 0.6 }, 0.7),
+    frame: std('#a9adb3', { roughness: 0.85 }, 0.2),                       // 外露混凝土框架（灰）
+    vipGlass: lampMat('#4f7286', '#ffd9a0', 1.0, { roughness: 0.08, metalness: 0.7 }),
+    steelMesh: new THREE.MeshStandardMaterial({ color: '#cfd4da', metalness: 0.8, roughness: 0.35, transparent: true, opacity: 0.55, side: THREE.DoubleSide }),
+    discRed: std('#d62a1e', { roughness: 0.5, side: THREE.DoubleSide }, 0.6),
+    discYellow: std('#f2b705', { roughness: 0.5, side: THREE.DoubleSide }, 0.6),
     carpet: floodlit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide }), 0.58),
     grass: std('#86ba69', { roughness: 1 }, 0.25),
     people: floodlit(new THREE.MeshStandardMaterial({ roughness: 0.8 }), 0.8),

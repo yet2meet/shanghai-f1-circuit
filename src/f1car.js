@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /** 截面放样：sections = [{ z, w, h, y, p, x }]，p 为超椭圆指数（2=椭圆，越大越方） */
-function loft(sections, seg = 20) {
+export function loft(sections, seg = 20) {
   const pos = [], idx = [];
   const ring = (s) => {
     const a = s.w / 2, b = s.h / 2, p = s.p ?? 2.6, x0 = s.x ?? 0;

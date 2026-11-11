@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { OSM_BUILDINGS, OSM_AREAS, OSM_LINES } from './osm-data.js';
 import { rng, std, floodlit, canvasTex, nightEmissives } from './util.js';
+import { loft } from './f1car.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -132,12 +133,85 @@ function splitCapsSides(geo) {
   return out;
 }
 
+/** 把非索引几何按法线朝上 / 朝下拆成两份（顶面、底面） */
+function splitUpDown(g) {
+  const pos = g.attributes.position.array, nor = g.attributes.normal.array, uv = g.attributes.uv?.array;
+  const up = { p: [], n: [], u: [] }, dn = { p: [], n: [], u: [] };
+  for (let i = 0; i < pos.length / 9; i++) {
+    const o = nor[i * 9 + 1] < 0 ? dn : up;
+    o.p.push(...pos.slice(i * 9, i * 9 + 9)); o.n.push(...nor.slice(i * 9, i * 9 + 9));
+    if (uv) o.u.push(...uv.slice(i * 6, i * 6 + 6));
+  }
+  return [up, dn].map((o) => {
+    const b = new THREE.BufferGeometry();
+    b.setAttribute('position', new THREE.Float32BufferAttribute(o.p, 3));
+    b.setAttribute('normal', new THREE.Float32BufferAttribute(o.n, 3));
+    if (uv) b.setAttribute('uv', new THREE.Float32BufferAttribute(o.u, 2));
+    return b;
+  });
+}
+
 function windowTexture(wall, glass, lit) {
   return canvasTex(64, 64, (c, w, h) => {
     c.fillStyle = wall; c.fillRect(0, 0, w, h);
     c.fillStyle = glass; c.fillRect(10, 18, 44, 30);
     if (lit) { c.fillStyle = '#000'; c.fillRect(0, 0, w, h); c.fillStyle = Math.random() < 0.6 ? '#fff' : '#555'; c.fillRect(10, 18, 44, 30); }
   });
+}
+
+/** 多边形主方向（主成分）：返回中心、长轴单位向量、长度、宽度 */
+function principal(p) {
+  let cx = 0, cn = 0; const N = p.length / 2;
+  for (let i = 0; i < p.length; i += 2) { cx += p[i]; cn += p[i + 1]; }
+  cx /= N; cn /= N;
+  let sxx = 0, sxy = 0, syy = 0;
+  for (let i = 0; i < p.length; i += 2) { const dx = p[i] - cx, dy = p[i + 1] - cn; sxx += dx * dx; sxy += dx * dy; syy += dy * dy; }
+  const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  const ux = Math.cos(ang), un = Math.sin(ang);
+  let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+  for (let i = 0; i < p.length; i += 2) {
+    const dx = p[i] - cx, dy = p[i + 1] - cn, u = dx * ux + dy * un, v = -dx * un + dy * ux;
+    u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v);
+  }
+  const um = (u0 + u1) / 2, vm = (v0 + v1) / 2;
+  return { cx: cx + ux * um - un * vm, cn: cn + un * um + ux * vm, ux, un, L: u1 - u0, W: v1 - v0 };
+}
+
+let MAT_REF = null;
+/** “翼”：沿长轴放样的梭形体 + 玻璃带 + 眼形窗 */
+function buildWing(b, put) {
+  const M = MAT_REF;
+  const P = principal(b.p);
+  const H = Math.max(4, b.h - b.m);
+  const yMid = b.m + H * 0.5;
+  const n = 40;
+  const skin = [], band = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, s = Math.sin(Math.PI * t);
+    const w = Math.max(0.15, P.W * 0.5 * Math.pow(s, 0.55) * 2);        // 平面：两端尖
+    const h = Math.max(0.12, H * Math.pow(s, 0.85));                      // 立面：中部最厚
+    const z = (t - 0.5) * P.L;
+    skin.push({ z, w, h, y: yMid - H * 0.08 * (1 - s), p: 2.3 });
+    if (t > 0.16 && t < 0.84) band.push({ z, w: w * 1.012, h: h * 0.3, y: yMid + h * 0.06, p: 2.3 });
+  }
+  const place = (g) => {
+    g.rotateY(Math.atan2(P.ux, -P.un));   // 局部 z 轴对齐长轴（场景中 z = -n）
+    g.translate(P.cx, 0, -P.cn);
+    return g;
+  };
+  put(M.wingSkin, place(loft(skin, 28)));
+  put(M.wingGlass, place(loft(band, 28)));
+  // 眼形小窗：两端附近，左右各一
+  for (const t of [0.13, 0.87]) {
+    const s = Math.sin(Math.PI * t), w = P.W * 0.5 * Math.pow(s, 0.55) * 2, h = H * Math.pow(s, 0.85);
+    for (const side of [-1, 1]) {
+      const e = new THREE.SphereGeometry(1, 16, 8).toNonIndexed();
+      e.scale(0.25, h * 0.16, P.L * 0.045);
+      e.translate(side * w * 0.5, yMid + h * 0.05, (t - 0.5) * P.L);
+      for (const k of Object.keys(e.attributes)) if (k !== 'position' && k !== 'normal') e.deleteAttribute(k);
+      put(M.eye, place(e));
+    }
+  }
 }
 
 export function buildOSM(scene) {
@@ -309,6 +383,27 @@ export function buildOSM(scene) {
     industrial: std('#c7ccd3', { roughness: 0.7 }, 0.25),
     industrialRoof: std('#6f8fae', { roughness: 0.6 }, 0.25),
   };
+  // 上海赛车场的标志性构件（据施工报道与实拍照片）
+  MAT.wingSkin = std('#d3d8de', { roughness: 0.38, metalness: 0.3 }, 0.3);       // “翼”的银白金属外壳
+  MAT.wingGlass = new THREE.MeshStandardMaterial({ color: '#3f7f73', roughness: 0.08, metalness: 0.85, emissive: '#ffe2b0', emissiveIntensity: 0 });
+  nightEmissives.push({ m: MAT.wingGlass, max: 0.6 });
+  MAT.eye = new THREE.MeshStandardMaterial({ color: '#1d2b33', roughness: 0.1, metalness: 0.9 });
+  MAT.chinaRed = std('#c8102e', { roughness: 0.45, metalness: 0.15 }, 0.5);          // 看台两端的中国红楼梯塔
+  const floorsTex = canvasTex(64, 64, (c, w, h) => {
+    c.fillStyle = '#3f7f86'; c.fillRect(0, 0, w, h);
+    const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(255,255,255,0.18)'); g.addColorStop(1, 'rgba(0,0,0,0.12)');
+    c.fillStyle = g; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#c9d2d6'; c.fillRect(0, 0, w, 7);          // 楼层板
+    c.fillStyle = 'rgba(200,215,220,0.6)'; c.fillRect(0, 0, 3, h); // 竖梃
+  });
+  floorsTex.wrapS = floorsTex.wrapT = THREE.RepeatWrapping; floorsTex.repeat.set(1 / 2.4, 1 / 3.3);
+  const floorsLit = canvasTex(64, 64, (c, w, h) => { c.fillStyle = '#000'; c.fillRect(0, 0, w, h); c.fillStyle = '#ffffff'; c.fillRect(4, 12, w - 8, h - 16); });
+  floorsLit.wrapS = floorsLit.wrapT = THREE.RepeatWrapping; floorsLit.repeat.copy(floorsTex.repeat);
+  MAT.towerGlass = new THREE.MeshStandardMaterial({ map: floorsTex, roughness: 0.1, metalness: 0.7, emissive: '#ffe2b0', emissiveMap: floorsLit, emissiveIntensity: 0 });
+  nightEmissives.push({ m: MAT.towerGlass, max: 0.7 });                              // 维修楼一侧的绿蓝色玻璃圆塔
+  MAT.roofSteel = std('#c3c8cf', { roughness: 0.4, metalness: 0.5 }, 0.25);            // 主看台悬挑钢顶棚：顶面银灰
+  MAT.roofUnder = std('#7d848d', { roughness: 0.55, metalness: 0.35 }, 0.35);           // 底面：深一档的金属吊顶，避免与天空混成一片
+  MAT_REF = MAT;
   const bucket = new Map();
   const put = (mat, g) => { if (!bucket.has(mat)) bucket.set(mat, []); bucket.get(mat).push(g); };
   const venueZone = (p) => { const [x0, n0, x1, n1] = bboxOf(p); const cx = (x0 + x1) / 2, cn = (n0 + n1) / 2; return cx > -900 && cx < 560 && cn > -620 && cn < 640; };
@@ -327,10 +422,10 @@ export function buildOSM(scene) {
     }
     let geo;
     if (b.r === 'round') {
-      // 主看台两端横跨赛道的“翼”：圆润的拱形体
-      const bt = hh * 0.42;
-      geo = new THREE.ExtrudeGeometry(shapeOf(b.p, b.q), { depth: Math.max(0.3, hh - bt * 2), bevelEnabled: true, bevelThickness: bt, bevelSize: 1.2, bevelSegments: 6, curveSegments: 6 });
-      geo.translate(0, 0, bt);
+      // “翼”：两端尖、中部最厚的梭形钢桁架（同济大学结构研究：桁架高度中部最大、向两端减小），
+      // 银白金属外壳，中部一条连续的绿色玻璃带，近两端各一个眼形小窗（据实拍照片）
+      buildWing(b, put);
+      continue;
     } else if (b.k === 'roof' && b.p.length >= 30) {
       // 荷叶形膜结构：薄而边缘圆润
       geo = new THREE.ExtrudeGeometry(shapeOf(b.p, b.q), { depth: 0.2, bevelEnabled: true, bevelThickness: 0.45, bevelSize: 0.6, bevelSegments: 3 });
@@ -343,9 +438,14 @@ export function buildOSM(scene) {
     const [caps, sides] = splitCapsSides(geo);
     if (isVenue) {
       // 白色膜结构只给顶棚：主看台顶棚（高 35 m）与 H/K 荷叶顶棚（多边形点数多）；其余屋面为中灰
-      const membrane = b.k === 'roof' && (b.p.length >= 40 || b.h > 25);
-      put(membrane ? MAT.membrane : MAT.venueRoof, caps);
-      put(membrane ? MAT.membrane : MAT.venue, sides || caps);
+      const lotus = b.k === 'roof' && b.p.length >= 40;            // H/K 荷叶膜顶棚：白色
+      const mainRoof = b.k === 'roof' && b.h > 25;                   // 主看台悬挑钢顶棚：银灰金属
+      const tower = Math.abs(b.h - 29.75) < 0.3;                     // 两端支撑“翼”的塔（OSM 高 29.75 m）
+      if (tower && A < 300) { put(MAT.chinaRed, caps); put(MAT.chinaRed, sides || caps); }
+      else if (tower) { put(MAT.venueRoof, caps); put(MAT.towerGlass, sides || caps); }
+      else if (lotus) { put(MAT.membrane, caps); put(MAT.membrane, sides || caps); }
+      else if (mainRoof) { const [top, under] = splitUpDown(caps); put(MAT.roofSteel, top); put(MAT.roofUnder, under); put(MAT.roofSteel, sides || caps); }
+      else { put(MAT.venueRoof, caps); put(MAT.venue, sides || caps); }
     } else if (b.k === 'industrial') { put(MAT.industrialRoof, caps); put(MAT.industrial, sides || caps); }
     else { put(MAT.roof, caps); put(hh >= 6 ? windowWall : MAT.plain, sides || caps); }
   }

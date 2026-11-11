@@ -33,14 +33,17 @@ export const STANDS = [
   {
     id: 'A', code: 'A', name: '主看台', type: 'seats', color: '#d7262c',
     roofBottom: 29.75, // 顶棚底部高度（OSM），镜头需压在顶棚之下
+    roofLength: 330,   // OSM 中顶棚沿看台方向的长度（看台本身 391 m，两端由“翼”覆盖）
     turns: '发车大直道 · 发车点 · 维修区 · 领奖台',
     gate: '1 号门',
     desc: '双层主看台长 391 米、高 24.5 米，正对发车格、维修站与领奖台；两端的“翼”形结构横跨赛道与维修楼相连。官方票区分为 A铂金（上层中段）、A上（上层）和 A下（下层）。',
-    base: 2.2,
+    base: 2.74, // 下层首排高 2.74 m（施工报道）
+    realMain: true, // 按真实构造：外露框架后立面、16 部外部楼梯、43 根顶棚钢柱、顶棚底面红黄圆盘、层间包厢玻璃带
     tiers: [
-      { rows: 17, rise: 0.4, zone: 'low' },
+      // 下层 2.74 → 12.1 m；上层 15.6 → 27 m（两层之间为包厢层）
+      { rows: 17, rise: 0.585, zone: 'low' },
       // 铂金区位置按官方座位图量取：上层中段，自 1 号弯一端起约 35%–62% 的长度
-      { rows: 22, rise: 0.48, gap: 3.2, lift: 4.1, zone: 'high', center: { zone: 'plat', fromT1: 0.35, toT1: 0.62 } },
+      { rows: 22, rise: 0.543, gap: 3.2, lift: 3.5, zone: 'high', center: { zone: 'plat', fromT1: 0.35, toT1: 0.62 } },
     ],
     zones: {
       plat: { name: 'A铂金', color: '#a8862a', price: 4680, day: null, note: '仅售三日票' },

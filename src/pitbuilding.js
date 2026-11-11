@@ -1,9 +1,10 @@
-// 维修楼（Pit Building）：按 OpenStreetMap 轮廓（长 322 m、进深 31 m、高 12 m，正面朝赛道）程序化建模。
-//   一层：33 个车库开间（11 支车队 × 3 间），开门可见地坪、队色背墙、天花灯、赛车、轮胎架、工具柜、监控屏
-//   二层：车队办公，带形窗 + 竖向窗框
-//   三层：围场俱乐部玻璃幕墙 + 外挑观景阳台（玻璃栏板、扶手）
-//   屋顶：挑檐、灯带、檐下筒灯、屋面设备
-//   维修通道：各队停车位标线、头顶灯架、轮胎堆
+// 维修楼（Pit Building）：按 OpenStreetMap 轮廓（长 322 m、进深 31 m、高 12 m，正面朝赛道）程序化建模，
+// 外观依据实拍照片，车库数量依据施工报道（一层共 36 个车库）。
+//   一层：36 个车库开间（11 支车队 × 3 间，余 3 间备用），车库内有赛车、队色背景墙、工作台、遥测屏、轮胎架、技师
+//   车库层上方：黑白相间的广告带
+//   二层：围场俱乐部，整面玻璃 + 两块大屏
+//   屋顶：深灰檐口带 + 屋顶平台玻璃栏板 + 屋面设备
+//   维修通道：各车停车位标线、头顶灯架、轮胎堆
 // 车库按 2026 赛季车库顺序排列（data.js 中的 TEAMS），冠军车队靠近维修通道入口（16 号弯一端）。
 // 车队名称牌用文字绘制；如在 public/brand/manifest.json 中提供了授权的车队标志，会自动替换上去。
 import * as THREE from 'three';
@@ -128,33 +129,52 @@ export function buildPitBuilding(scene, brand = null) {
   const GD = 16; // 车库进深
   add(box(L, 0.12, D), epoxy, 0, 0.06, D / 2, false);              // 一层地坪
   add(box(L, 0.8, D - 0.6), concrete, 0, 6.0, D / 2 + 0.3);         // 二层楼板
-  add(box(L, 0.35, D + 3.6), concrete, 0, 9.25, D / 2 - 1.8);       // 三层楼板 + 外挑阳台
-  add(box(L + 2, 0.55, D + 6.5), white, 0, 12.6, D / 2 - 3.25);     // 屋面 + 前挑檐
-  add(box(L + 2, 1.1, 0.35), white, 0, 12.45, -4.8);                // 挑檐封边
-  add(box(L, 0.12, 0.06), lampMat('#ffffff', '#e8f2ff', 2.5), 0, 11.92, -4.98, false); // 封边灯带
   add(box(L, 12, 0.4), concrete, 0, 6, D - 0.2);                    // 背立面
   add(box(L, 5.6, 0.25), concrete, 0, 2.8, GD + 0.12);              // 车库背墙（结构）
-  for (const sx of [-1, 1]) add(box(0.5, 12.9, D), concrete, sx * (L / 2 - 0.25), 6.45, D / 2); // 两端山墙
-  // 二层：实墙 + 带形窗
-  add(box(L, 2.8, 0.35), concrete, 0, 7.8, 0.6);
-  add(box(L - 1, 1.3, 0.08), glass, 0, 7.85, 0.4, false);
-  // 三层：通高玻璃幕墙（退后 0.4 m）
-  add(box(L - 1, 2.75, 0.1), glass, 0, 10.85, 0.5, false);
-  add(box(L - 1, 0.1, 0.16), steel, 0, 11.3, 0.42, false);          // 幕墙横梃
-  // 背立面窗带
-  add(box(L - 6, 1.3, 0.1), glass, 0, 7.8, D + 0.02, false);
-  add(box(L - 6, 1.3, 0.1), glass, 0, 10.9, D + 0.02, false);
-  // 阳台玻璃栏板 + 扶手
-  const rail = new THREE.Mesh(new THREE.PlaneGeometry(L, 1.05), glassRail);
-  rail.position.set(0, 9.95, -3.55); G.add(rail);
-  const hand = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, L, 6), steel);
-  hand.rotation.z = Math.PI / 2; hand.position.set(0, 10.5, -3.55); G.add(hand);
-  // 挑檐支撑斜杆（每两个开间一根）
+  for (const sx of [-1, 1]) add(box(0.5, 12.2, D), concrete, sx * (L / 2 - 0.25), 6.1, D / 2); // 两端山墙
+  add(box(L - 6, 4.0, 0.1), glass, 0, 9.0, D + 0.02, false);        // 背立面（面向围场）的长玻璃立面
+  // 车库层上方的广告带（黑白相间）
+  const bandTex = canvasTex(1024, 64, (c, w, h) => {
+    const items = ['FORMULA 1', '中国大奖赛', 'CHINESE GRAND PRIX', '上海国际赛车场', 'SHANGHAI 2026', 'FORMULA 1'];
+    const pw = w / items.length;
+    items.forEach((s, i) => {
+      c.fillStyle = i % 2 ? '#ffffff' : '#111114'; c.fillRect(i * pw, 0, pw, h);
+      c.fillStyle = i % 2 ? '#111114' : '#ffffff'; c.font = '800 30px "Helvetica Neue", Arial, "PingFang SC", sans-serif';
+      c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(s, i * pw + pw / 2, h / 2 + 1, pw - 16);
+    });
+  }, [L / 60, 1]);
+  const bandMat = floodlit(new THREE.MeshStandardMaterial({ map: bandTex, roughness: 0.5 }), 0.8);
+  const band = new THREE.Mesh(box(L, 1.0, 0.25), [concrete, concrete, concrete, concrete, concrete, bandMat]);
+  band.position.set(0, 6.35, -0.15); G.add(band);
+  // 二层：围场俱乐部，整面玻璃（略退后）+ 横梃
+  add(box(L - 1, 4.4, 0.1), glass, 0, 9.05, 0.5, false);
+  add(box(L - 1, 0.1, 0.16), steel, 0, 9.4, 0.42, false);
+  // 深灰檐口带 + 屋面（小挑檐）+ 屋顶平台玻璃栏板
+  const canopyMat = std('#4a4f57', { roughness: 0.5, metalness: 0.4 }, 0.12);
+  add(box(L + 1, 0.5, D + 2), white, 0, 11.9, D / 2 - 1);
+  add(box(L + 1, 1.2, 0.4), canopyMat, 0, 11.6, -1.0);
+  add(box(L, 0.1, 0.06), lampMat('#ffffff', '#e8f2ff', 2.5), 0, 11.0, -1.22, false);
+  const roofRail = new THREE.Mesh(new THREE.PlaneGeometry(L, 1.1), glassRail);
+  roofRail.position.set(0, 12.75, -0.8); G.add(roofRail);
+  // 二层两块大屏（实拍照片中可见）
+  const tvTex = canvasTex(256, 144, (c, w, h) => {
+    const g = c.createLinearGradient(0, 0, w, h); g.addColorStop(0, '#0d1b2e'); g.addColorStop(1, '#22344f');
+    c.fillStyle = g; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#e10600'; c.fillRect(0, h - 22, w, 22);
+    c.fillStyle = '#fff'; c.font = '700 13px Arial'; c.fillText('LIVE · SHANGHAI', 10, h - 7);
+    c.fillStyle = 'rgba(255,255,255,0.85)'; c.font = '800 34px Arial'; c.textAlign = 'center'; c.fillText('F1', w / 2, h / 2 - 4);
+  });
+  for (const sx of [-0.25, 0.25]) {
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(8, 4.5), new THREE.MeshStandardMaterial({ map: tvTex, emissive: '#ffffff', emissiveMap: tvTex, emissiveIntensity: 0.9 }));
+    scr.rotation.y = Math.PI; scr.position.set(sx * L, 9.1, -0.45);
+    const frame = new THREE.Mesh(box(8.4, 4.9, 0.5), darkMetal); frame.position.set(sx * L, 9.1, -0.15);
+    G.add(frame, scr);
+  }
   const strut = batch(new THREE.CylinderGeometry(0.09, 0.09, 1, 8), steel, G);
 
   // ── 车库开间 ──
-  const bayW = 9.4;
-  const nB = Math.floor((L - 8) / bayW);
+  const nB = 36;                       // 上海赛车场比赛工作楼共 36 个车库
+  const bayW = (L - 8) / nB;
   const x0 = -(nB * bayW) / 2;
   // 维修通道入口在 n 较小的一端（16 号弯）：第 0 个开间放在离入口最近的一端
   const endPlus = new THREE.Vector3(L / 2, 0, 0).applyMatrix4(G.matrixWorld);
@@ -223,16 +243,14 @@ export function buildPitBuilding(scene, brand = null) {
   for (let k = 0; k <= nB; k++) {
     const x = x0 + k * bayW;
     pier.add(x, 6.2, 0.45, 1, 12.4, 1);
-    if (k % 2 === 0 && k > 0 && k < nB) strut.add(x, 11.0, -2.2, 1, 3.6, 1, 0); // 竖向支撑
   }
   for (let x = -L / 2 + 0.8; x < L / 2; x += 1.6) {
-    mull.add(x, 7.85, 0.42, 1, 1.3, 1);
-    mull.add(x, 10.85, 0.45, 1, 2.75, 1);
+    mull.add(x, 9.05, 0.45, 1, 4.4, 1);
   }
   const dir = plusIsEntry ? -1 : 1;
   for (let k = 0; k < nB; k++) {
     const team = TEAMS[Math.floor(k / 3)];
-    if (!team) break;
+    if (!team) { doors.add(bayX(k), 2.6, 0.35, bayW - 0.7, 1, 1); for (const lz of [3, 7, 11]) lights.add(bayX(k), 5.55, lz); continue; } // 备用车库：关闭
     const [c0, c1, c2] = team.livery || [team.color, '#1b1b1f', team.color];
     const color = team.color;
     const cx = bayX(k);
@@ -306,7 +324,7 @@ export function buildPitBuilding(scene, brand = null) {
   for (let i = 0; i < 26; i++) hvac.add((rand() - 0.5) * (L - 30), 13.7, 8 + rand() * 20, 1, 1, 1, rand() < 0.5 ? 0 : Math.PI / 2);
   // 檐下筒灯
   const down = batch(new THREE.CylinderGeometry(0.18, 0.18, 0.05, 10), lampMat('#ffffff', '#fff3d6', 3), G);
-  for (let x = -L / 2 + 2; x < L / 2; x += 3.2) down.add(x, 12.3, -3.0);
+  for (let x = -L / 2 + 2; x < L / 2; x += 3.2) down.add(x, 11.6, -0.6);
 
   for (const b of [pier, mull, partition, lights, drum, doors, tyre, blanket, rack, rackBar, trolley, trolleyTop, screens, screenBack, desk, deskLeg, chair, gantryBeam, hanger, tray, hose, floorLine, shirts, legs, skin, ...Object.values(carB), hvac, down, strut]) G.add(b.build());
   // 让实例矩阵已含 G 的变换：把这些实例放到场景根节点下
@@ -344,15 +362,15 @@ export function buildPitBuilding(scene, brand = null) {
   pitItems[0].renderOrder = pitItems[1].renderOrder = -0.95;
   pitItems[0].castShadow = pitItems[1].castShadow = false;
 
-  // ── 领奖台：阳台中段外挑 ──
+  // ── 领奖台：二层立面外侧的悬挑平台 ──
   const podium = new THREE.Group();
   podium.position.set(40, 0, 0);
   const red = std('#c8102e', { roughness: 0.5 }, 0.6);
-  const plat = new THREE.Mesh(box(24, 0.5, 6), white); plat.position.set(0, 9.3, -6.4); plat.castShadow = true;
-  const back = new THREE.Mesh(box(24, 2.6, 0.3), red); back.position.set(0, 10.9, -3.7);
-  const prail = new THREE.Mesh(new THREE.PlaneGeometry(24, 1.0), glassRail); prail.position.set(0, 10.0, -9.4);
+  const plat = new THREE.Mesh(box(24, 0.5, 6), white); plat.position.set(0, 7.2, -3.2); plat.castShadow = true;
+  const back = new THREE.Mesh(box(24, 2.6, 0.3), red); back.position.set(0, 8.8, -0.35);
+  const prail = new THREE.Mesh(new THREE.PlaneGeometry(24, 1.0), glassRail); prail.position.set(0, 7.95, -6.2);
   podium.add(plat, back, prail);
-  [[0, 1.0], [-2.8, 0.7], [2.8, 0.45]].forEach(([x, h]) => { const b = new THREE.Mesh(box(2.4, h, 1.8), white); b.position.set(x, 9.55 + h / 2, -6.8); podium.add(b); });
+  [[0, 1.0], [-2.8, 0.7], [2.8, 0.45]].forEach(([x, h]) => { const b = new THREE.Mesh(box(2.4, h, 1.8), white); b.position.set(x, 7.45 + h / 2, -3.6); podium.add(b); });
   G.add(podium);
 
   scene.add(G);
