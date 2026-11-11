@@ -211,8 +211,18 @@ function buildWing(b, put) {
     g.translate(P.cx, 0, -P.cn);
     return g;
   };
-  put(M.wingSkin, place(loft(skin, 28)));
-  put(M.wingGlass, place(loft(band, 28)));
+  // loft 的截面沿 -z 方向排列时三角形绕向是反的（外表面朝内，被背面剔除后整只“翼”像是透明的），这里翻转绕向
+  const outward = (g) => {
+    if (g.index) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const k = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = k; } }
+    else for (const a of Object.values(g.attributes)) {                 // 非索引：交换每个三角形的第 2、3 个顶点
+      const s = a.itemSize, arr = a.array;
+      for (let v = 0; v < a.count; v += 3) for (let c = 0; c < s; c++) { const k = arr[(v + 1) * s + c]; arr[(v + 1) * s + c] = arr[(v + 2) * s + c]; arr[(v + 2) * s + c] = k; }
+    }
+    g.computeVertexNormals();
+    return g;
+  };
+  put(M.wingSkin, place(outward(loft(skin, 28))));
+  put(M.wingGlass, place(outward(loft(band, 28))));
   // 眼形小窗：两端附近，左右各一
   for (const t of [0.13, 0.87]) {
     const s = Math.sin(Math.PI * t), w = P.W * 0.5 * Math.pow(s, 0.55) * 2, h = H * Math.pow(s, 0.85);
