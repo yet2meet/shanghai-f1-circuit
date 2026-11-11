@@ -152,6 +152,17 @@ canvas.addEventListener('wheel', (e) => {
   setSeatFov(camera.fov * Math.exp(e.deltaY * 0.0012));
 }, { passive: false });
 
+/** 有顶棚的看台：把镜头压到顶棚底部以下，并相应拉远，保证从棚下看清座位 */
+function underRoof(s, pos, target) {
+  const roof = s.spec.roofBottom;
+  if (!roof || pos.y <= roof - 2.5) return pos;
+  const y = roof - 2.5;
+  const flat = pos.clone().sub(target).setY(0);
+  const drop = pos.y - y;
+  flat.setLength(flat.length() + drop * 0.6); // 降低高度的同时往外退一些，视角不至于太平
+  return target.clone().add(flat).setY(y);
+}
+
 function viewFor(s, mode) {
   const up = new THREE.Vector3(0, 1, 0);
   const right = new THREE.Vector3().crossVectors(s.f, up);
@@ -159,7 +170,7 @@ function viewFor(s, mode) {
   const mk = isMobile() ? 1.7 : 1;
   if (mode === 'seats') {
     const d = THREE.MathUtils.clamp(s.L * 0.16 + 40, 52, 105) * (isMobile() ? 1.35 : 1);
-    return { pos: s.center.clone().addScaledVector(s.f, d).addScaledVector(up, s.H * 0.5 + 40), target };
+    return { pos: underRoof(s, s.center.clone().addScaledVector(s.f, d).addScaledVector(up, s.H * 0.5 + 40), target), target };
   }
   const d = (s.L * 0.55 + 120) * mk;
   return { pos: s.center.clone().addScaledVector(s.f, d).addScaledVector(right, d * 0.45).addScaledVector(up, d * (s.spec.roof === 'cantilever' ? 0.5 : 0.72)), target };
@@ -192,7 +203,7 @@ const isMobile = () => innerWidth <= 860;
 function blockView(s, b) {
   const up = new THREE.Vector3(0, 1, 0);
   const k = isMobile() ? 1.5 : 1;
-  flyTo(b.center.clone().addScaledVector(b.f, 26 * k).addScaledVector(up, 15 * k), b.center, 1.1);
+  flyTo(underRoof(s, b.center.clone().addScaledVector(b.f, 26 * k).addScaledVector(up, 15 * k), b.center), b.center, 1.1);
 }
 
 // ───────────────────────── UI：列表 ─────────────────────────

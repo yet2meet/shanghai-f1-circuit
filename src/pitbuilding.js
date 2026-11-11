@@ -81,12 +81,12 @@ export function buildPitBuilding(scene, brand = null) {
 
   // 材质
   const concreteTex = canvasTex(256, 256, (c, w, h) => {
-    c.fillStyle = '#eceef1'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#c8cdd3'; c.fillRect(0, 0, w, h);
     for (let i = 0; i < 2600; i++) { const v = 222 + Math.random() * 26; c.fillStyle = `rgba(${v},${v},${v + 2},0.35)`; c.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
     c.strokeStyle = 'rgba(150,155,162,0.35)'; c.lineWidth = 2; c.strokeRect(0, 0, w, h);
   }, [1, 1]);
   const concrete = std('#ffffff', { map: concreteTex, roughness: 0.75 }, 0.16);
-  const white = std('#f4f5f7', { roughness: 0.5 }, 0.16);
+  const white = std('#b9bfc7', { roughness: 0.4, metalness: 0.35 }, 0.16); // 银灰金属屋面与封边
   const darkMetal = std('#2b2e34', { roughness: 0.4, metalness: 0.6 }, 0.08);
   const steel = std('#c7ccd3', { roughness: 0.3, metalness: 0.7 }, 0.3);
   const glass = new THREE.MeshStandardMaterial({ color: '#6e8ea8', roughness: 0.06, metalness: 0.85, envMapIntensity: 1.4, emissive: '#ffd59a', emissiveIntensity: 0 });

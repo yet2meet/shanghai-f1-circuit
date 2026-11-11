@@ -151,7 +151,7 @@ export function buildOSM(scene) {
   const AREA = {
     farmland: ['#7f9b55', -9], residential: ['#c7c3b8', -8], industrial: ['#bdb8ae', -8], retail: ['#cbc1b2', -8], cemetery: ['#8ca576', -8],
     park: ['#97c47c', -7], grass: ['#9cc782', -7], forest: ['#7aae66', -7], flowerbed: ['#92c377', -6], pitch: ['#86bd6c', -6], trackfield: ['#c9876e', -6],
-    parking: ['#c6cad0', -5], plaza: ['#eef0f2', -5], paved: ['#d9dce0', -5], gravel: ['#d9bf88', -5], sand: ['#e6cf9c', -5], water: ['#5fa8d2', -4],
+    parking: ['#c6cad0', -5], plaza: ['#dcdfe3', -5], paved: ['#cfd3d8', -5], gravel: ['#d9bf88', -5], sand: ['#e6cf9c', -5], water: ['#5fa8d2', -4],
   };
   const byKind = {};
   for (const a of OSM_AREAS) {
@@ -300,8 +300,8 @@ export function buildOSM(scene) {
   const windowWall = floodlit(new THREE.MeshStandardMaterial({ map: wallTex, emissive: '#ffcf8a', emissiveMap: litTex, emissiveIntensity: 0, roughness: 0.8 }), 0.25);
   nightEmissives.push({ m: windowWall, max: 0.9 });
   const MAT = {
-    venue: std('#eef0f3', { roughness: 0.5, side: THREE.DoubleSide }, 0.16),
-    venueRoof: std('#d9dde2', { roughness: 0.6, side: THREE.DoubleSide }, 0.12),
+    venue: std('#c4c9d0', { roughness: 0.45, metalness: 0.3, side: THREE.DoubleSide }, 0.16), // 建筑主体：浅银灰
+    venueRoof: std('#9aa0a8', { roughness: 0.6, metalness: 0.2, side: THREE.DoubleSide }, 0.12), // 屋面：中灰
     membrane: std('#f7f8fa', { roughness: 0.45, side: THREE.DoubleSide }, 0.3),
     steel: std('#d5d9df', { roughness: 0.35, metalness: 0.55 }, 0.45),
     roof: std('#8d939b', { roughness: 0.75 }, 0.25),
@@ -342,7 +342,8 @@ export function buildOSM(scene) {
     geo.translate(0, b.m, 0);
     const [caps, sides] = splitCapsSides(geo);
     if (isVenue) {
-      const membrane = b.k === 'roof' || b.r === 'round' || b.r === 'skillion';
+      // 白色膜结构只给顶棚：主看台顶棚（高 35 m）与 H/K 荷叶顶棚（多边形点数多）；其余屋面为中灰
+      const membrane = b.k === 'roof' && (b.p.length >= 40 || b.h > 25);
       put(membrane ? MAT.membrane : MAT.venueRoof, caps);
       put(membrane ? MAT.membrane : MAT.venue, sides || caps);
     } else if (b.k === 'industrial') { put(MAT.industrialRoof, caps); put(MAT.industrial, sides || caps); }

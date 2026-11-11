@@ -410,7 +410,7 @@ function buildClub(spec, common) {
 export function buildStands(scene) {
   const mats = {
     concrete: std('#c4c7cd', { roughness: 0.9 }, 0.2),
-    white: std('#eef0f3', { roughness: 0.6 }, 0.22),
+    white: std('#c9ced5', { roughness: 0.5, metalness: 0.25 }, 0.18),
     dark: std('#2a2c31', { roughness: 0.6 }, 0.2),
     steel: std('#c9ced6', { roughness: 0.35, metalness: 0.6 }, 0.45),
     glass: lampMat('#7fa6c4', '#ffd9a0', 1.2, { roughness: 0.1, metalness: 0.6 }),

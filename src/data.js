@@ -32,6 +32,7 @@ export const PRICE_SOURCE = '2026 F1 喜力中国大奖赛官方票价表';
 export const STANDS = [
   {
     id: 'A', code: 'A', name: '主看台', type: 'seats', color: '#d7262c',
+    roofBottom: 29.75, // 顶棚底部高度（OSM），镜头需压在顶棚之下
     turns: '发车大直道 · 发车点 · 维修区 · 领奖台',
     gate: '1 号门',
     desc: '双层主看台长 391 米、高 24.5 米，正对发车格、维修站与领奖台；两端的“翼”形结构横跨赛道与维修楼相连。官方票区分为 A铂金（上层中段）、A上（上层）和 A下（下层）。',
@@ -58,6 +59,7 @@ export const STANDS = [
   },
   {
     id: 'H', code: 'H', name: 'H 看台', type: 'seats', color: '#6f4ba3',
+    roofBottom: 18,
     turns: '1.2 km 长直道末端 · 14 号发卡弯刹车区',
     gate: '9 号门',
     desc: '13 片荷叶形顶棚下的看台，位于长直道末端，赛车全速抵达后在 14 号发卡弯前重刹。与 K 看台同属 H/K 票区。',
@@ -67,6 +69,7 @@ export const STANDS = [
   },
   {
     id: 'K', code: 'K', name: 'K 看台', type: 'seats', color: '#6f4ba3',
+    roofBottom: 18,
     turns: '长直道末端 · 14 号发卡弯',
     gate: '1 号门',
     desc: '与 H 看台隔着长直道相望，13 片荷叶形顶棚，可以看到赛车全速驶来后在发卡弯前重刹。与 H 看台同属 H/K 票区。',
