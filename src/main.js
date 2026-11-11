@@ -28,7 +28,9 @@ const canvas = $('#scene');
 // ───────────────────────── 渲染器 ─────────────────────────
 // 性能档位：手机 / 平板用更低的像素比与抗锯齿采样
 const MOBILE = matchMedia('(pointer: coarse)').matches || innerWidth <= 860;
-const DPR_CAP = Math.min(devicePixelRatio, MOBILE ? 1.25 : 1.5);
+// 手机屏幕像素密度高（iPhone 为 3），1.25 倍会被拉伸约 2.4 倍而发糊：手机上限提到 2，掉帧时再自动下调（最低 1）
+const DPR_CAP = Math.min(devicePixelRatio, MOBILE ? 2 : 1.5);
+const DPR_MIN = Math.min(DPR_CAP, MOBILE ? 1 : 0.75);
 // 画面先渲染到后期处理缓冲（自带多重采样抗锯齿），画布本身不再开抗锯齿；
 // 不用对数深度缓冲（会让显卡的提前深度剔除失效），改为按镜头距离动态调整近裁剪面来保证深度精度
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -683,8 +685,8 @@ function governor(dt) {
   perf.ema = perf.ema * 0.95 + dt * 1000 * 0.05;
   if (perf.ema > 26) { perf.slow += dt; perf.fast = 0; } else if (perf.ema < 14) { perf.fast += dt; perf.slow = 0; } else { perf.slow = perf.fast = 0; }
   let next = perf.dpr;
-  if (perf.slow > 1.5 && perf.dpr > 0.7) next = Math.max(0.7, perf.dpr - 0.15);
-  if (perf.fast > 5 && perf.dpr < DPR_CAP) next = Math.min(DPR_CAP, perf.dpr + 0.15);
+  if (perf.slow > 1.5 && perf.dpr > DPR_MIN) next = Math.max(DPR_MIN, perf.dpr - 0.25);
+  if (perf.fast > 4 && perf.dpr < DPR_CAP) next = Math.min(DPR_CAP, perf.dpr + 0.25);
   if (next !== perf.dpr) { perf.dpr = next; perf.slow = perf.fast = 0; renderer.setPixelRatio(next); resize(); }
 }
 let skip = false;
