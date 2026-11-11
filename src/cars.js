@@ -1,45 +1,34 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { f1CarGeometry, carMaterials } from './f1car.js';
 import { TEAMS } from './data.js';
 import { floodlit } from './util.js';
 
-function carGeometries() {
-  const b = (w, h, d, x, y, z) => { const g = new THREE.BoxGeometry(w, h, d); g.translate(x, y, z); return g; };
-  const body = mergeGeometries([
-    b(0.75, 0.42, 3.2, 0, 0.45, -0.2),   // 单体壳
-    b(0.42, 0.24, 1.7, 0, 0.36, 2.1),    // 鼻锥
-    b(1.75, 0.38, 1.6, 0, 0.4, -0.5),    // 侧箱
-    b(0.3, 0.5, 0.9, 0, 0.85, -0.7),     // 进气口
-  ]);
-  const wings = mergeGeometries([
-    b(1.95, 0.07, 0.55, 0, 0.18, 2.85),  // 前翼
-    b(1.6, 0.07, 0.45, 0, 0.98, -2.35),  // 尾翼
-    b(0.06, 0.6, 0.5, 0.78, 0.72, -2.35), b(0.06, 0.6, 0.5, -0.78, 0.72, -2.35),
-    b(1.5, 0.06, 0.9, 0, 0.14, -2.0),    // 扩散器
-  ]);
-  const wheel = (x, z) => { const g = new THREE.CylinderGeometry(0.36, 0.36, 0.38, 14); g.rotateZ(Math.PI / 2); g.translate(x, 0.36, z); return g; };
-  const wheels = mergeGeometries([wheel(0.86, 1.75), wheel(-0.86, 1.75), wheel(0.9, -1.7), wheel(-0.9, -1.7)]);
-  const light = b(0.22, 0.14, 0.08, 0, 0.42, -2.6);
-  return { body, wings, wheels, light };
-}
-
 export function buildCars(scene, track) {
-  const geo = carGeometries();
-  const tyre = new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.9 });
-  const carbon = floodlit(new THREE.MeshStandardMaterial({ color: '#1b1c1f', roughness: 0.5 }), 0.3);
-  const rear = new THREE.MeshStandardMaterial({ color: '#400', emissive: '#ff1a10', emissiveIntensity: 4 });
-  const cars = [];
-  const n = TEAMS.length * 2; // 2026：11 支车队 × 2 辆
-  for (let i = 0; i < n; i++) {
-    const g = new THREE.Group();
-    const paint = floodlit(new THREE.MeshStandardMaterial({ color: TEAMS[(i / 2) | 0].color, roughness: 0.3, metalness: 0.4 }), 0.8);
-    const body = new THREE.Mesh(geo.body, paint);
-    body.castShadow = true;
-    g.add(body, new THREE.Mesh(geo.wings, carbon), new THREE.Mesh(geo.wheels, tyre), new THREE.Mesh(geo.light, rear));
-    // 1:1 尺寸：车长约 5.7 m、宽 1.95 m（与真实 F1 赛车一致）
-    scene.add(g);
-    cars.push({ g, s: track.total * ((0.08 + i * 0.041) % 1) + ((i * 37) % 11), lane: ((i * 13) % 7 - 3) * 0.6 });
+  // 22 辆车（11 支车队 × 2）：每种材质一个实例化网格，涂装颜色逐车设置，总共只需 10 次绘制调用
+  const geo = f1CarGeometry();
+  const n = TEAMS.length * 2;
+  const base = carMaterials({ livery: ['#ffffff', '#ffffff', '#ffffff'], compound: '#ffffff' }, floodlit);
+  const inst = {};
+  const col = new THREE.Color();
+  for (const k of Object.keys(geo)) {
+    const im = new THREE.InstancedMesh(geo[k], base[k], n);
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    im.castShadow = k === 'paint' || k === 'carbon';
+    im.frustumCulled = false;
+    for (let i = 0; i < n; i++) {
+      const t = TEAMS[(i / 2) | 0], L = t.livery || [t.color, '#1b1b1f', t.color];
+      const cc = { paint: L[0], secondary: L[1], accent: L[2], stripe: ['#e10600', '#ffd400', '#f2f2f2'][i % 3] }[k];
+      if (cc) im.setColorAt(i, col.set(cc));
+    }
+    scene.add(im);
+    inst[k] = im;
   }
+  const rear = new THREE.InstancedMesh(new THREE.BoxGeometry(0.16, 0.1, 0.04).translate(0, 0.42, -2.62), new THREE.MeshStandardMaterial({ color: '#400', emissive: '#ff1a10', emissiveIntensity: 4 }), n);
+  rear.frustumCulled = false;
+  scene.add(rear);
+  const all = [...Object.values(inst), rear];
+  const cars = [];
+  for (let i = 0; i < n; i++) cars.push({ g: new THREE.Object3D(), s: track.total * ((0.08 + i * 0.041) % 1) + ((i * 37) % 11), lane: ((i * 13) % 7 - 3) * 0.6 });
   const p = new THREE.Vector3(), ahead = new THREE.Vector3();
   const sample = (s, lane, out) => {
     const f = ((s % track.total) + track.total) % track.total / track.total * track.N;
@@ -63,7 +52,10 @@ export function buildCars(scene, track) {
         sample(c.s + 6, c.lane, ahead);
         c.g.position.copy(p);
         c.g.lookAt(ahead);
+        c.g.updateMatrix();
       }
+      cars.forEach((c, i) => { for (const im of all) im.setMatrixAt(i, c.g.matrix); });
+      for (const im of all) im.instanceMatrix.needsUpdate = true;
     },
   };
 }

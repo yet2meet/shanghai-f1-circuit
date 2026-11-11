@@ -1,0 +1,15 @@
+{
+  "teams": {
+    "mclaren": "teams/mclaren.png",
+    "mercedes": "teams/mercedes.png",
+    "redbull": "teams/redbull.png",
+    "ferrari": "teams/ferrari.png",
+    "williams": "teams/williams.png",
+    "racingbulls": "teams/racingbulls.png",
+    "astonmartin": "teams/astonmartin.png",
+    "haas": "teams/haas.png",
+    "audi": "teams/audi.png",
+    "alpine": "teams/alpine.png",
+    "cadillac": "teams/cadillac.png"
+  }
+}
