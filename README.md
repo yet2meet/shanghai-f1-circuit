@@ -1,4 +1,4 @@
-# 上海国际赛车场 · 3D 看台浏览
+# 上海国际赛车场 · Shanghai International Circuit
 
 在浏览器里探索上海国际赛车场（Shanghai International Circuit）的 3D 模型：赛道、看台、维修区、围场与周边环境，查看各看台位置与参考票价，放大到具体分区和座位，并切换到座位视角看赛道。支持白天 / 黑夜（夜间自动亮灯）和手机竖屏。
 

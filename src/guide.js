@@ -3,7 +3,7 @@ const KEY = 'sic-guide-v1';
 
 const mobile = () => innerWidth <= 860;
 const STEPS = [
-  { title: '欢迎来到上海国际赛车场', body: '这是一座按真实地形与建筑还原的 3D 赛车场。花 20 秒了解几个基本操作。', icon: '🏁' },
+  { title: '欢迎来到上海国际赛车场', body: '赛道、看台与建筑均按真实测绘数据还原。花 20 秒了解几个基本操作。', icon: '🏁' },
   {
     title: '自由查看', icon: '🖐',
     body: () => (mobile()

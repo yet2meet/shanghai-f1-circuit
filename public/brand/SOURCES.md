@@ -16,3 +16,7 @@
 | teams/audi.png | File:Audif1.com logo17 (cropped).svg |
 | teams/alpine.png | File:BWT Alpine F1 Team Logo.png |
 | teams/cadillac.png | File:Cadillac Formula 1 Team Logo (2025).svg |
+
+| 文件 | 来源文件 |
+| --- | --- |
+| f1-logo.svg / f1-logo-white.svg / ../favicon.svg | File:F1.svg（维基共享资源，Formula 1 标志；白色版与网页图标由原图改色、加底生成） |
