@@ -414,3 +414,14 @@ body:not([data-open='list']) .panel.left, body:not([data-open='info']) .panel.in
   #about p { font-size: 12.5px; line-height: 1.6; }
   #about h4 { font-size: 13px; margin-top: 14px; }
 }
+
+/* 卫星图开关 */
+.pill[aria-pressed='true'] { background: var(--accent); color: #fff; border-color: transparent; }
+.pill.busy { background: linear-gradient(90deg, rgba(0, 113, 227, 0.25) calc(var(--p, 0) * 100%), var(--glass) 0); }
+.sat-credit { position: fixed; right: 12px; bottom: 20px; z-index: 3; font-size: 10px; color: rgba(255, 255, 255, 0.9); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); pointer-events: none; }
+.sat-credit:empty { display: none; }
+@media (max-width: 860px) {
+  .pills { gap: 6px; padding: 0 8px; }
+  .pill { padding: 8px 11px 8px 10px; font-size: 12.5px; }
+  .sat-credit { left: 0; right: 0; text-align: center; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 46px); }
+}

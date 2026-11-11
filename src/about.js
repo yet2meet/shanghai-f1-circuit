@@ -16,8 +16,8 @@ const sections = () => [
     'Formula 1、F1 标志及各车队名称、标志均为其各自权利人所有，本站按项目方获得的授权使用，仅用于识别与展示。',
     'Formula 1, the F1 logo and all team names and logos are the property of their respective owners and are used under authorisation obtained by the project, for identification and display only.')],
   [t('数据来源', 'Data sources'), t(
-    '票价：2026 F1 喜力中国大奖赛官方票价表（久事体育）。地图数据 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 贡献者（ODbL）。三维渲染：three.js。',
-    'Prices: official 2026 F1 Heineken Chinese Grand Prix price list (Juss Sports). Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL). 3D rendering: three.js.')],
+    '票价：2026 F1 喜力中国大奖赛官方票价表（久事体育）。地图数据 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 贡献者（ODbL）。卫星影像（可选）© Esri, Maxar, Earthstar Geographics。三维渲染：three.js。',
+    'Prices: official 2026 F1 Heineken Chinese Grand Prix price list (Juss Sports). Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL). Satellite imagery (optional) © Esri, Maxar, Earthstar Geographics. 3D rendering: three.js.')],
 ];
 
 export function initAbout() {

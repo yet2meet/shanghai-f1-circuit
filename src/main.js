@@ -17,6 +17,7 @@ import { buildKarting } from './karting.js';
 import { initGuide } from './guide.js';
 import { initAbout } from './about.js';
 import { initDrawers } from './drawers.js';
+import { createSatellite, SAT_CREDIT } from './satellite.js';
 import { loadPhotoTextures } from './textures.js';
 import { buildCamLimits } from './camlimits.js';
 import { t as tr, L, onLang, isEn } from './i18n.js';
@@ -136,6 +137,7 @@ function flyTo(pos, target, dur = 1.6) {
 }
 // ───────────────────────── 自由视角：边界、防穿模、随缩放自动倾斜 ─────────────────────────
 const camLimits = buildCamLimits(stands);
+const sat = createSatellite(scene, { mobile: MOBILE });
 const _off = new THREE.Vector3(), _fwd = new THREE.Vector3(), _sph = new THREE.Spherical();
 let lastDist = 0, limitsDirty = true;
 const WALK_D = 8; // 镜头与注视点的最近距离；再放大就向前走
@@ -647,6 +649,7 @@ function toast(msg) {
 function applyNight(t) {
   const e = t * t * (3 - 2 * t);
   applyTime(env, scene, e);
+  sat.night(e);
   const lights = THREE.MathUtils.smoothstep(t, 0.45, 0.92); // 天色暗下来后灯光依次亮起
   night.value = lights;
   for (const { m, max } of nightEmissives) m.emissiveIntensity = max * lights;
@@ -758,6 +761,22 @@ syncList(); // 按当前语言写入底部提示语（HTML 里的是中文占位
 initGuide(); // 第一次打开时的新手引导
 initAbout(); // 署名与免责声明
 initDrawers(); // 看台列表与赛道信息：平时收起
+// 卫星底图开关：第一次打开时才下载影像
+{
+  const btn = $('#pillSat'), credit = $('#satCredit');
+  btn.addEventListener('click', async () => {
+    if (btn.classList.contains('busy')) return;
+    const next = !sat.on;
+    btn.setAttribute('aria-pressed', next);
+    if (next) { btn.classList.add('busy'); toast(tr('正在加载卫星影像…', 'Loading satellite imagery…')); }
+    await sat.set(next, (p) => btn.style.setProperty('--p', p));
+    btn.classList.remove('busy');
+    credit.textContent = next ? tr('影像 © ', 'Imagery © ') + SAT_CREDIT : '';
+    if (next) toast(tr('卫星图已开启 · 与赛道、建筑按同一坐标对齐', 'Satellite on · aligned to the same coordinates as the track and buildings'));
+    limitsDirty = true;
+  });
+  onLang(() => { if (sat.on) credit.textContent = tr('影像 © ', 'Imagery © ') + SAT_CREDIT; });
+}
 setTimeout(() => loadPhotoTextures(renderer), 600); // 首屏之后再下载地面照片纹理
 onLang(() => {
   renderList(); renderDetail(); syncList(); renderSeatBar();
