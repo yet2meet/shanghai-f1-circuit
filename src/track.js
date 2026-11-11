@@ -4,6 +4,7 @@ import { V, makePath, ribbon, wall, smooth, std, canvasTex, floodlit } from './u
 import { OSM_PIT } from './osm-data.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { asGround } from './osm.js';
+import { groundDetail } from './textures.js';
 
 export const HW = 7.5; // 赛道半宽（真实路面宽约 13–15 m）
 
@@ -79,12 +80,12 @@ export function buildTrack(scene) {
   }, [1, 1]);
   const verge = new THREE.Mesh(
     ribbon(path, { offA: (i) => HW + 13 + gwL[i], offB: (i) => -(HW + 13 + gwR[i]), y: 0.05, uv: 24 }),
-    floodlit(new THREE.MeshStandardMaterial({ map: vergeTex, roughness: 1 }), 0.25)
+    groundDetail(floodlit(new THREE.MeshStandardMaterial({ map: vergeTex, roughness: 1 }), 0.25), 'grass', { size: 3, k: 0.8 })
   );
   g.add(asGround(verge, -1.5));
 
   // 砂石缓冲区
-  const gravelMat = std('#dcc189', { roughness: 1 }, 0.3);
+  const gravelMat = groundDetail(std('#dcc189', { roughness: 1 }, 0.3), 'gravel', { size: 2.2, k: 1.0, mk: 0.14 });
   const gravelL = new THREE.Mesh(ribbon(path, { offA: (i) => HW + 3.5 + gwL[i], offB: HW + 3.5, y: 0.1 }), gravelMat);
   const gravelR = new THREE.Mesh(ribbon(path, { offA: -(HW + 3.5), offB: (i) => -(HW + 3.5 + gwR[i]), y: 0.1 }), gravelMat);
   g.add(asGround(gravelL, -1.4), asGround(gravelR, -1.4));
@@ -104,7 +105,7 @@ export function buildTrack(scene) {
   }, [1, 1]);
   const asphalt = new THREE.Mesh(
     ribbon(path, { offA: HW, offB: -HW, y: 0.16, uv: 16 }),
-    floodlit(new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.92 }), 0.55)
+    groundDetail(floodlit(new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.92 }), 0.55), 'asphalt', { size: 3, k: 0.7, mk: 0.12 })
   );
   g.add(asGround(asphalt, -1.2));
 

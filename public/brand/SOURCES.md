@@ -20,3 +20,6 @@
 | 文件 | 来源文件 |
 | --- | --- |
 | f1-logo.svg / f1-logo-white.svg / ../favicon.svg | File:F1.svg（维基共享资源，Formula 1 标志；白色版与网页图标由原图改色、加底生成） |
+
+说明：以上标志均已裁切为仅保留车队本身的标志，去掉了冠名 / 赞助商部分（Oracle、HP、Mastercard、Petronas、Aramco、BWT、Revolut、TGR、Visa、Cash App、Atlassian）。
+迈凯伦、红牛、法拉利标志在车库标牌上保留原色（manifest.json 的 fullColor），其余在深色队色底上绘成白色剪影。

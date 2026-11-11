@@ -7,6 +7,7 @@ import { OSM_PIT, OSM_STANDS } from './osm-data.js';
 import { V, std, lampMat, makePath, ribbon, wall, canvasTex, floodlit } from './util.js';
 import { asGround } from './osm.js';
 import { HW } from './track.js';
+import { groundDetail } from './textures.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 // 发车点：按 2026 官方座位图量取 —— 位于主看台中段偏 16 号弯一侧，约在看台全长距 1 号弯一端 62% 处
@@ -45,7 +46,7 @@ export function buildVenue(scene, track, pitb) {
     return Math.abs(along) < pitb.L / 2 + 4 && d > 0 && d < 22 ? d : null;
   });
   const offB = (i) => (toGarage[i] !== null ? -toGarage[i] : -6);
-  const pitAsphalt = new THREE.Mesh(ribbon(pit, { offA: 6, offB: (i) => offB(i) - 0.2, y: 0.14 }), std('#3b3e44', { roughness: 0.9 }, 0.55));
+  const pitAsphalt = new THREE.Mesh(ribbon(pit, { offA: 6, offB: (i) => offB(i) - 0.2, y: 0.14 }), groundDetail(std('#3b3e44', { roughness: 0.9 }, 0.55), 'asphalt', { size: 3, k: 0.7, mk: 0.12 }));
   g.add(asGround(pitAsphalt, -1.15));
   g.add(asGround(new THREE.Mesh(ribbon(pit, { offA: 5.75, offB: 5.45, y: 0.16 }), lineMat), -1.0));
   // 快车道 / 工作区分界线（实线）

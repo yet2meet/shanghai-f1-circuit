@@ -14,9 +14,28 @@ import { TEAMS } from './data.js';
 import { f1CarGeometry } from './f1car.js';
 import { V, rng, std, floodlit, lampMat, canvasTex, nightEmissives } from './util.js';
 
-/** 在深色底上把标志绘成白色剪影（真实车库在深色背景上也多用单色白标），浅色底保留原色 */
+/** 单色标志在深色底上绘成白色剪影（真实车库在深色背景上也多用单色白标），浅色底保留原色；
+ *  manifest.json 的 fullColor 列表中的彩色标志（迈凯伦、红牛、法拉利）始终保留原色：
+ *  自带底色的直接圆角裁切绘制，透明底的放在一块白色圆角标牌上，保证在任何队色上都清晰 */
 function luminance(hex) { const c = new THREE.Color(hex); return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; }
-function drawLogo(c, img, x, y, w, h, bg) {
+function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+function opaqueCorner(img) {
+  const o = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  o.canvas.width = img.width; o.canvas.height = img.height; o.drawImage(img, 0, 0);
+  return o.getImageData(1, 1, 1, 1).data[3] > 200;
+}
+function drawLogo(c, img, x, y, w, h, bg, full = false) {
+  if (full) {
+    c.save();
+    if (opaqueCorner(img)) { roundRect(c, x, y, w, h, Math.min(w, h) * 0.08); c.clip(); c.drawImage(img, x, y, w, h); }
+    else {
+      const p = Math.min(w, h) * 0.12;
+      c.fillStyle = '#ffffff'; roundRect(c, x - p, y - p, w + 2 * p, h + 2 * p, p * 1.2); c.fill();
+      c.drawImage(img, x, y, w, h);
+    }
+    c.restore();
+    return;
+  }
   if (luminance(bg) > 0.45) { c.drawImage(img, x, y, w, h); return; }
   const off = document.createElement('canvas'); off.width = Math.ceil(w); off.height = Math.ceil(h);
   const o = off.getContext('2d');
@@ -24,6 +43,7 @@ function drawLogo(c, img, x, y, w, h, bg) {
   o.globalCompositeOperation = 'source-in'; o.fillStyle = '#ffffff'; o.fillRect(0, 0, w, h);
   c.drawImage(off, x, y);
 }
+const isFull = (brand, team) => !!brand?.fullColor?.includes(team.id);
 /** 按比例放进一个框里 */
 function fit(img, maxW, maxH) { const k = Math.min(maxW / img.width, maxH / img.height); return [img.width * k, img.height * k]; }
 
@@ -34,7 +54,7 @@ function teamSign(team, brand) {
     c.fillStyle = team.color; c.fillRect(0, 0, W, Hc);
     c.fillStyle = 'rgba(0,0,0,0.18)'; c.fillRect(0, Hc - 10, W, 10);
     let x = W / 2;
-    if (logo) { const [w, h] = fit(logo, 300, Hc - 24); drawLogo(c, logo, 40, (Hc - h) / 2, w, h, team.color); x = 40 + w + (W - 40 - w) / 2; }
+    if (logo) { const [w, h] = fit(logo, 300, Hc - 24); drawLogo(c, logo, 40, (Hc - h) / 2, w, h, team.color, isFull(brand, team)); x = 40 + w + (W - 40 - w) / 2; }
     c.fillStyle = team.text; c.font = '700 64px "Helvetica Neue", Arial, "PingFang SC", sans-serif';
     c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText(team.name.toUpperCase(), x, Hc / 2 + 2, W - (logo ? x - W / 2 + 120 : 80));
@@ -79,7 +99,7 @@ function teamWall(team, brand) {
     c.fillStyle = c2; c.beginPath(); c.moveTo(W * 0.5, Hc); c.lineTo(W * 0.67, 0); c.lineTo(W * 0.69, 0); c.lineTo(W * 0.52, Hc); c.closePath(); c.fill();
     c.fillStyle = 'rgba(0,0,0,0.12)'; c.fillRect(0, Hc - 18, W, 18);
     let x = 60;
-    if (logo) { const [w, h] = fit(logo, 330, Hc - 40); drawLogo(c, logo, 60, (Hc - h) / 2, w, h, c0); x = 60 + w + 50; }
+    if (logo) { const [w, h] = fit(logo, 330, Hc - 40); drawLogo(c, logo, 60, (Hc - h) / 2, w, h, c0, isFull(brand, team)); x = 60 + w + 50; }
     c.fillStyle = team.text; c.font = '800 92px "Helvetica Neue", Arial, sans-serif'; c.textBaseline = 'middle';
     c.fillText(team.name.toUpperCase(), x, Hc / 2, W * 0.5);
   };

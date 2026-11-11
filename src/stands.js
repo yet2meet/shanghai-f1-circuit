@@ -7,6 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { STANDS, TURNS } from './data.js';
 import { OSM_STANDS } from './osm-data.js';
 import { V, rng, std, floodlit, lampMat, extrudeProfile } from './util.js';
+import { groundDetail } from './textures.js';
 
 export const ROW_D = 0.85;
 export const PITCH = 0.55;
@@ -503,7 +504,7 @@ export function buildStands(scene) {
     discRed: std('#d62a1e', { roughness: 0.5, side: THREE.DoubleSide }, 0.6),
     discYellow: std('#f2b705', { roughness: 0.5, side: THREE.DoubleSide }, 0.6),
     carpet: floodlit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide }), 0.58),
-    grass: std('#86ba69', { roughness: 1 }, 0.25),
+    grass: groundDetail(std('#86ba69', { roughness: 1 }, 0.25), 'grass', { size: 3, k: 0.8 }),
     people: floodlit(new THREE.MeshStandardMaterial({ roughness: 0.8 }), 0.8),
   };
   const colorCache = new Map();

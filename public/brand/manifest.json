@@ -11,5 +11,10 @@
     "audi": "teams/audi.png",
     "alpine": "teams/alpine.png",
     "cadillac": "teams/cadillac.png"
-  }
+  },
+  "fullColor": [
+    "mclaren",
+    "redbull",
+    "ferrari"
+  ]
 }

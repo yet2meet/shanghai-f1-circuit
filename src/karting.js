@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { OSM_LINES } from './osm-data.js';
 import { makePath, ribbon, std, floodlit, canvasTex, smooth, V } from './util.js';
+import { groundDetail } from './textures.js';
 
 const W = 8;            // 赛道宽 8 m（常见卡丁车场 8–10 m）
 const KERB = 1.0;
@@ -41,8 +42,8 @@ export function buildKarting(scene) {
   }
   const curv = smooth(raw, 3);
 
-  const asphalt = floodlit(new THREE.MeshStandardMaterial({ color: '#2f3136', roughness: 0.92 }), 0.12);
-  const verge = std('#9cc782', { roughness: 1 }, 0.06);
+  const asphalt = groundDetail(floodlit(new THREE.MeshStandardMaterial({ color: '#2f3136', roughness: 0.92 }), 0.12), 'asphalt', { size: 3, k: 0.7, mk: 0.12 });
+  const verge = groundDetail(std('#9cc782', { roughness: 1 }, 0.06), 'grass', { size: 3, k: 0.8 });
   const white = std('#f2f2f2', { roughness: 0.6 }, 0.8);
   const kerbTex = canvasTex(64, 8, (c, w, h) => { c.fillStyle = '#d7262c'; c.fillRect(0, 0, w / 2, h); c.fillStyle = '#f4f4f4'; c.fillRect(w / 2, 0, w / 2, h); }, [1, 1]);
   kerbTex.wrapS = THREE.RepeatWrapping;
@@ -68,7 +69,7 @@ export function buildKarting(scene) {
     const p = pathFrom(l.p, false, 1.5);
     if (p.N > 1) links.push(ribbon(p, { offA: 3, offB: -3, y: 0.045 }));
   }
-  if (links.length) g.add(ground(asphalt.clone(), -2.05)(mergeGeometries(links)));
+  if (links.length) g.add(ground(groundDetail(floodlit(new THREE.MeshStandardMaterial({ color: '#2f3136', roughness: 0.92 }), 0.12), 'asphalt', { size: 3, k: 0.7, mk: 0.12 }), -2.05)(mergeGeometries(links)));
 
   // 轮胎墙：缓冲带外缘，每 0.75 m 一摞（黑色为主，间隔红白）。离其他赛段太近处不放，避免压到相邻赛道
   const spots = [];

@@ -6,6 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { OSM_BUILDINGS, OSM_AREAS, OSM_LINES } from './osm-data.js';
 import { rng, std, floodlit, canvasTex, nightEmissives } from './util.js';
 import { loft } from './f1car.js';
+import { groundDetail } from './textures.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -286,6 +287,8 @@ export function buildOSM(scene) {
       if (rims.length) { const rm = new THREE.Mesh(mergeGeometries(rims), groundMat('#d8d2c4', 0.1)); rm.position.y = 0.02; root.add(asGround(rm, -3.9)); }
     }
     const mat = k === 'water' ? waterMat : groundMat(AREA[k][0], 0.08);
+    const DETAIL = { grass: 'grass', park: 'grass', forest: 'grass', flowerbed: 'grass', pitch: 'grass', farmland: 'grass', cemetery: 'grass', gravel: 'gravel', sand: 'gravel', parking: 'asphalt', paved: 'asphalt', plaza: 'asphalt' };
+    if (DETAIL[k]) groundDetail(mat, DETAIL[k], DETAIL[k] === 'grass' ? { size: 3.5, k: 0.8 } : DETAIL[k] === 'gravel' ? { size: 2.2, k: 1.0, mk: 0.14 } : { size: 4, k: 0.45, mk: 0.12 });
     const m = new THREE.Mesh(mergeGeometries(list), mat);
     m.position.y = 0.02;
     root.add(asGround(m, AREA[k][1]));
@@ -355,7 +358,7 @@ export function buildOSM(scene) {
     return m;
   };
   add(waterLines, waterMat, -4);
-  for (const [cls, list] of Object.entries(ground)) add(list, groundMat(ROAD[cls] || '#c4c7cc', 0.1), /footway|path|steps|pedestrian|cycleway|track/.test(cls) ? -3.5 : -3);
+  for (const [cls, list] of Object.entries(ground)) add(list, groundDetail(groundMat(ROAD[cls] || '#c4c7cc', 0.1), 'asphalt', { size: 3, k: 0.5, mk: 0.12 }), /footway|path|steps|pedestrian|cycleway|track/.test(cls) ? -3.5 : -3);
   const dashTex = canvasTex(64, 8, (c, w, h) => { c.clearRect(0, 0, w, h); c.fillStyle = '#fff'; c.fillRect(0, 0, w * 0.5, h); }, [1, 1]);
   const dashMat = new THREE.MeshStandardMaterial({ map: dashTex, transparent: true, alphaTest: 0.5 });
   dashMat.depthWrite = false;
