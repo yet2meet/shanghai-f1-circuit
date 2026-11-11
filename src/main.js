@@ -188,6 +188,7 @@ function enterSeatCam(eye) {
   controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: null, RIGHT: THREE.MOUSE.ROTATE };   // 座位视角：拖动 = 原地环顾
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: null };
   applyViewOffset();
+  document.body.dataset.seatcam = '1';
 }
 function exitSeatCam() {
   if (!seatCam) return;
@@ -198,6 +199,7 @@ function exitSeatCam() {
   camera.updateProjectionMatrix();
   seatCam = null;
   applyViewOffset();
+  delete document.body.dataset.seatcam;
 }
 function setSeatFov(fov) {
   camera.fov = THREE.MathUtils.clamp(fov, 12, 80);
@@ -523,6 +525,18 @@ function toggleSeat(key) {
   paintSeat(s, idx);
   renderDetail();
 }
+// 手机端座位视角：收起底部大面板，只留一条小胶囊（座位名 · 票价 · 退出），不挡视野
+let seatNow = null;
+const seatBar = document.createElement('div');
+seatBar.id = 'seatBar';
+seatBar.className = 'glass';
+document.body.appendChild(seatBar);
+function renderSeatBar() {
+  if (!seatNow) return;
+  const seat = seatNow.s.seats[seatNow.idx], z = seatNow.s.spec.zones[seat.zone];
+  seatBar.innerHTML = `<i style="background:${z.color}"></i><div><b>${seatName(seatNow.s, seat)}</b><small>${tr('三日票', '3-day pass')} ${fmtPrice(z.price)}</small></div><button>${tr('退出', 'Exit')}</button>`;
+}
+seatBar.addEventListener('click', (e) => { if (e.target.closest('button')) enterSeats(); });
 function seatView(s, idx) {
   const p = seatWorld(s, idx);
   const eye = p.clone().add(new THREE.Vector3(0, 1.25, 0)); // 坐姿视线高度
@@ -530,6 +544,7 @@ function seatView(s, idx) {
   const dir = seatFacing(s, idx).clone().multiplyScalar(14).add(new THREE.Vector3(0, -2.85, 0)).normalize();
   flyTo(eye, eye.clone().addScaledVector(dir, SEAT_LOOK), 1.4);
   enterSeatCam(eye);
+  seatNow = { s, idx }; renderSeatBar();
   toast(isMobile() ? tr('座位视角 · 拖动环顾 · ± 望远', 'Seat view · drag to look around · ± to zoom') : tr('座位视角 · 拖动环顾 · 滚轮望远', 'Seat view · drag to look around · scroll to zoom'));
 }
 
@@ -739,7 +754,7 @@ syncList(); // 按当前语言写入底部提示语（HTML 里的是中文占位
 initGuide(); // 第一次打开时的新手引导
 initAbout(); // 署名与免责声明
 onLang(() => {
-  renderList(); renderDetail(); syncList();
+  renderList(); renderDetail(); syncList(); renderSeatBar();
   labels.forEach((l) => {
     if (l.kind === 'stand') l.el.innerHTML = standLabel(standById[l.id]);
     else if (l.kind === 'block') l.el.textContent = L(standById[l.id].spec.zones[l.zone], 'name');

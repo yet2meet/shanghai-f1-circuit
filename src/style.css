@@ -362,3 +362,20 @@ body[data-mode='seats'] .panel.left { transform: translateX(calc(-100% - 40px));
   .about-bar i { display: none; }
   .about-bar u { border-bottom: 0; color: var(--text); font-weight: 600; }
 }
+
+/* 手机端座位视角：底部大面板收起，换成一条小胶囊 */
+#seatBar { display: none; }
+@media (max-width: 860px) {
+  body[data-seatcam] .panel.right { transform: translateY(105%); opacity: 0; pointer-events: none; }
+  body[data-seatcam] #seatBar { display: flex; }
+  #seatBar { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 9; align-items: center; gap: 10px; padding: 9px 9px 9px 14px; border-radius: 999px; }
+  #seatBar i { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+  #seatBar div { flex: 1; min-width: 0; line-height: 1.25; }
+  #seatBar b { display: block; font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #seatBar small { font-size: 11px; color: var(--sub); }
+  #seatBar button { flex: none; padding: 8px 16px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; }
+}
+@media (max-width: 860px) and (orientation: landscape) {
+  body[data-seatcam] .panel.right { transform: translateX(105%); }
+  #seatBar { left: auto; width: 320px; }
+}
