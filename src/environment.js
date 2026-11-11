@@ -65,7 +65,7 @@ export function buildEnvironment(scene, track, stands, renderer) {
     }
   }, [90, 90]);
   // 底图：OSM 未标注用途的土地在这一带基本是农田与绿地
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), new THREE.MeshStandardMaterial({ map: grassTex, color: '#dfe2e6', roughness: 1, depthWrite: false }));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), new THREE.MeshStandardMaterial({ map: grassTex, color: '#eef0eb', roughness: 1, depthWrite: false }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   ground.renderOrder = -10;

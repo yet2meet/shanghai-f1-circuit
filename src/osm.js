@@ -150,8 +150,8 @@ export function buildOSM(scene) {
   // ── 地块 ──
   const AREA = {
     farmland: ['#7f9b55', -9], residential: ['#c7c3b8', -8], industrial: ['#bdb8ae', -8], retail: ['#cbc1b2', -8], cemetery: ['#8ca576', -8],
-    park: ['#cbd3ca', -7], grass: ['#cbd3ca', -7], forest: ['#bcc6bb', -7], flowerbed: ['#c3ccc2', -6], pitch: ['#c0c9bf', -6], trackfield: ['#d9c9c2', -6],
-    parking: ['#c6cad0', -5], plaza: ['#eef0f2', -5], paved: ['#d9dce0', -5], gravel: ['#dcd8d0', -5], sand: ['#e6e1d6', -5], water: ['#8fadc1', -4],
+    park: ['#97c47c', -7], grass: ['#9cc782', -7], forest: ['#7aae66', -7], flowerbed: ['#92c377', -6], pitch: ['#86bd6c', -6], trackfield: ['#c9876e', -6],
+    parking: ['#c6cad0', -5], plaza: ['#eef0f2', -5], paved: ['#d9dce0', -5], gravel: ['#d9bf88', -5], sand: ['#e6cf9c', -5], water: ['#5fa8d2', -4],
   };
   const byKind = {};
   for (const a of OSM_AREAS) {
@@ -395,7 +395,7 @@ export function buildOSM(scene) {
       const h = (6 + rand() * 6) * k, w = (2.2 + rand() * 1.8) * k;
       trunk.setMatrixAt(i, m4.compose(p.set(x, h * 0.25, -n), q.identity(), s.set(1, h * 0.5, 1)));
       crown.setMatrixAt(i, m4.compose(p.set(x, h * 0.66, -n), q.setFromAxisAngle(UP, rand() * 6), s.set(w, h * 0.42, w)));
-      crown.setColorAt(i, c.setHSL(0.3, 0.08 + rand() * 0.06, 0.66 + rand() * 0.1)); // 白模风格：低饱和浅灰绿
+      crown.setColorAt(i, c.setHSL(0.27 + rand() * 0.05, 0.38 + rand() * 0.12, 0.34 + rand() * 0.09)); // 自然的绿色
     }
     trunk.castShadow = crown.castShadow = true;
     root.add(trunk, crown);
