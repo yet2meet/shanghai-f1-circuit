@@ -527,6 +527,62 @@ function insidePoly(x, n, p) {
   }
   return c;
 }
+/**
+ * 草地看台上零星的观众（每 400 m² 约 1 人，F 约 30 人、J 约 30 人），面朝赛道，有站有坐。
+ * 三个实例化网格（衣服 / 裤子 / 头）共 3 次绘制调用，开销可以忽略。
+ */
+const PEOPLE = { shirt: null, legs: null, head: null };
+function peopleGeos() {
+  if (PEOPLE.shirt) return PEOPLE;
+  PEOPLE.shirt = new THREE.CylinderGeometry(0.2, 0.17, 0.62, 6).translate(0, 1.2, 0);
+  PEOPLE.legs = new THREE.CylinderGeometry(0.15, 0.12, 0.88, 6).translate(0, 0.44, 0);
+  PEOPLE.head = new THREE.SphereGeometry(0.12, 8, 6).translate(0, 1.66, 0);
+  return PEOPLE;
+}
+function addGrassFans(g, part, spec) {
+  const p = part.poly, N = p.length / 2;
+  let A = 0, x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
+  for (let i = 0; i < N; i++) {
+    const j = (i + 1) % N; A += p[i * 2] * p[j * 2 + 1] - p[j * 2] * p[i * 2 + 1];
+    x0 = Math.min(x0, p[i * 2]); x1 = Math.max(x1, p[i * 2]); n0 = Math.min(n0, p[i * 2 + 1]); n1 = Math.max(n1, p[i * 2 + 1]);
+  }
+  const count = Math.min(40, Math.round(Math.abs(A / 2) / 400));
+  const rand = rng(spec.id.charCodeAt(0) * 131);
+  const spots = [];
+  for (let k = 0, guard = 0; spots.length < count && guard < count * 60; guard++) {
+    // 观众多聚在靠赛道的前半部分，三五成群
+    const cx = x0 + rand() * (x1 - x0), cn = n0 + rand() * (n1 - n0);
+    if (!insidePoly(cx, cn, p) || trackDist(cx, cn) > 60) continue;
+    const grp = 1 + Math.floor(rand() * 4);
+    for (let q = 0; q < grp && spots.length < count; q++) {
+      const x = cx + (rand() - 0.5) * 3, n = cn + (rand() - 0.5) * 3;
+      if (insidePoly(x, n, p)) spots.push([x, n]);
+    }
+  }
+  if (!spots.length) return;
+  const G = peopleGeos();
+  const skin = ['#f1c9a5', '#e0ac85', '#c68863', '#8d5a3b'];
+  const tees = ['#e10600', '#ff8000', '#1e5bc6', '#27f4d2', '#f5c518', '#ffffff', '#1b1b1f', '#2fae66', '#ff87bc', '#64c4ff'];
+  const mk = (geo, mat) => { const m = new THREE.InstancedMesh(geo, mat, spots.length); m.castShadow = true; return m; };
+  const shirt = mk(G.shirt, floodlit(new THREE.MeshStandardMaterial({ roughness: 0.8 }), 0.3));
+  const legs = mk(G.legs, std('#2b3240', { roughness: 0.9 }, 0.2));
+  const head = mk(G.head, floodlit(new THREE.MeshStandardMaterial({ roughness: 0.7 }), 0.3));
+  const m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion(), s3 = new THREE.Vector3(), v3 = new THREE.Vector3(), c = new THREE.Color();
+  const fx = part.f[0], fn = part.f[1];
+  spots.forEach(([x, n], i) => {
+    const sit = rand() < 0.55;                                           // 一半以上坐在草坡上
+    const yaw = Math.atan2(fx, -fn) + (rand() - 0.5) * 0.9;              // 大致面朝赛道
+    q4.setFromAxisAngle(UP, yaw);
+    const h = 0.92 + rand() * 0.16;
+    s3.set(h, sit ? h * 0.62 : h, h);
+    m4.compose(v3.set(x, 1.5, -n), q4, s3);
+    shirt.setMatrixAt(i, m4); legs.setMatrixAt(i, m4); head.setMatrixAt(i, m4);
+    shirt.setColorAt(i, c.set(tees[Math.floor(rand() * tees.length)]));
+    head.setColorAt(i, c.set(skin[Math.floor(rand() * skin.length)]));
+  });
+  g.add(shirt, legs, head);
+}
+
 function buildGrass(spec, mats, common) {
   const g = new THREE.Group();
   const part = OSM_STANDS[spec.id][0];
@@ -559,6 +615,7 @@ function buildGrass(spec, mats, common) {
     fencePanels.push(pg);
   }
   g.add(rails.build(), new THREE.Mesh(mergeGeometries(fencePanels), mats.fenceMesh));
+  addGrassFans(g, part, spec);
   let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
   for (let i = 0; i < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); n0 = Math.min(n0, p[i + 1]); n1 = Math.max(n1, p[i + 1]); }
   // 前沿标识牌

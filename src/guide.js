@@ -1,7 +1,7 @@
 // 新手引导：第一次打开时逐步指出主要操作；右上角“?”可随时重看
 import { t, onLang } from './i18n.js';
 
-const KEY = 'sic-guide-v3'; // 操作方式改为自由视角后升级版本号，老用户也会再看到一次
+const KEY = 'sic-guide-v4'; // 操作方式改为自由视角后升级版本号，老用户也会再看到一次
 
 const mobile = () => innerWidth <= 860;
 const STEPS = [
@@ -19,6 +19,8 @@ const STEPS = [
     body: () => t('在看台详情里点「进入选座」，再点选座位；双击座位或点「座位视角」，就能坐在这个座位上看赛道。', 'In a stand’s details, choose "Choose seats" and pick a seat. Double-click it or press "Seat view" to see the track from that seat.') },
   { target: '#minimap', title: () => t('赛道小地图', 'Track map'),
     body: () => t('小地图标出了 16 个弯道和各看台的位置，点击看台圆点也能直接跳转。', 'The map shows all 16 turns and every stand — click a stand’s dot to jump there.') },
+  { target: '#pillSat', title: () => t('卫星图', 'Satellite view'),
+    body: () => t('把底图换成真实卫星影像，赛道、看台和建筑都与影像一一对齐；再点一下切回模型底图。', 'Swap the ground for real satellite imagery — the track, stands and buildings line up with it exactly. Tap again to switch back.') },
   { target: '#themeSeg', title: () => t('白天 / 黑夜', 'Day / night'),
     body: () => t('切换到黑夜，赛道照明、看台和建筑的灯光会自动亮起。', 'Switch to night and the circuit floodlights, stands and buildings light up.') },
   { target: '#langSeg', title: () => t('中文 / English', 'English / 中文'),

@@ -266,14 +266,14 @@ export function buildOSM(scene) {
         if (inside(x, nn, a.p) && !a.q.some((h) => inside(x, nn, h))) { treeSpots.push(x, nn, a.k === 'forest' ? 1.15 : 1); k++; }
       }
     }
-    if (false && a.k === 'parking') { // 停车场保持空场，画面更整齐
+    if (a.k === 'parking') { // 停车场：只停少量车（约 2.5% 的车位），点缀而不显拥挤
       // 车位：沿停车场主方向排布，2.5 m × 5 m，每两排之间留 6 m 车道
       const ang = mainAxis(a.p), ca = Math.cos(ang), sa = Math.sin(ang);
       const [x0, n0, x1, n1] = bboxOf(a.p);
       const cx = (x0 + x1) / 2, cn = (n0 + n1) / 2, R = Math.hypot(x1 - x0, n1 - n0) / 2;
       for (let v = -R; v < R; v += 16) for (const dv of [-2.5, 2.5]) for (let u = -R; u < R; u += 2.6) {
         const x = cx + u * ca - (v + dv) * sa, nn = cn + u * sa + (v + dv) * ca;
-        if (inside(x, nn, a.p) && rand() < 0.62) carSpots.push(x, nn, ang);
+        if (inside(x, nn, a.p) && rand() < 0.025) carSpots.push(x, nn, ang);
       }
     }
   }
