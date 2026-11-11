@@ -33,6 +33,7 @@ function make(draw, seed) {
 const grey = (v, a = 1) => `rgba(${v},${v},${v},${a})`;
 
 let cache = null;
+const SHARED = {};
 export function groundTextures() {
   if (cache) return cache;
   // 草：大量短草叶（明暗交错）+ 少量深色土斑
@@ -79,6 +80,9 @@ export function groundTextures() {
     for (let i = 0; i < 260; i++) { const x = r() * S, y = r() * S, rr = 10 + r() * 34, v = 80 + r() * 96; wrap(() => { const gr = g.createRadialGradient(x, y, 0, x, y, rr); gr.addColorStop(0, grey(v | 0, 0.5)); gr.addColorStop(1, grey(v | 0, 0)); g.fillStyle = gr; g.fillRect(x - rr, y - rr, rr * 2, rr * 2); }, x, y, rr); }
   }, 51);
   cache = { grass, gravel, asphalt, macro };
+  // 所有地面材质共用同一个 uniform 对象：照片纹理加载完成后只需替换一次 value，全场同时生效
+  for (const k of ['grass', 'gravel', 'asphalt']) SHARED[k] = { value: cache[k] };
+  SHARED.macro = { value: macro };
   return cache;
 }
 
@@ -101,7 +105,7 @@ export function groundDetail(mat, kind, { size = 4, k = 0.5, mk = 0.18 } = {}) {
   mat.onBeforeCompile = (s, r) => {
     prev?.call(mat, s, r);
     Object.assign(s.uniforms, {
-      uDetail: { value: T[kind] }, uMacro: { value: T.macro }, uDS: { value: 1 / size }, uDK: { value: k * (P.gain || 1) }, uMK: { value: mk },
+      uDetail: SHARED[kind], uMacro: SHARED.macro, uDS: { value: 1 / size }, uDK: { value: k * (P.gain || 1) }, uMK: { value: mk },
       uTint: { value: new THREE.Vector3(...P.tint) }, uTK: { value: P.tk }, uBump: { value: P.bump }, uStripe: { value: P.stripe },
     });
     s.vertexShader = 'varying vec2 vGWP;\n' + s.vertexShader.replace('#include <project_vertex>',
@@ -142,3 +146,24 @@ float gdH = 0.5;
   mat.customProgramCacheKey = () => prevKey + '|gd2-' + kind;
   return mat;
 }
+
+/**
+ * 场景显示后在后台加载真实照片纹理（Poly Haven CC0，灰度明暗图，三张合计约 300 KB），
+ * 加载完成后替换程序生成的纹理；加载失败或网络慢时继续使用程序纹理，不影响使用。
+ */
+export function loadPhotoTextures(renderer) {
+  groundTextures();
+  const loader = new THREE.TextureLoader();
+  const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  for (const k of ['grass', 'gravel', 'asphalt']) {
+    loader.load(`./tex/${k}.jpg`, (tex) => {
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.colorSpace = THREE.NoColorSpace;
+      tex.anisotropy = aniso;
+      const old = SHARED[k].value;
+      SHARED[k].value = tex;
+      old.dispose();
+    }, undefined, () => { /* 保留程序纹理 */ });
+  }
+}
+
