@@ -10,6 +10,7 @@ export const HW = 7.5; // 赛道半宽（真实路面宽约 13–15 m）
 export function buildTrack(scene) {
   const curve = new THREE.CatmullRomCurve3(TRACK_POINTS.map(([x, n]) => V(x, n)), true, 'centripetal');
   const N = 1600;
+  curve.arcLengthDivisions = 20000; // 默认 200 段对 5.4 km 太粗，会让采样点间距从 0.2 m 到 14 m 不等
   const pts = curve.getSpacedPoints(N);
   pts.pop();
   const path = makePath(pts, true);
