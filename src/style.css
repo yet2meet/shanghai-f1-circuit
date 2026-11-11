@@ -379,3 +379,31 @@ body[data-mode='seats'] .panel.left { transform: translateX(calc(-100% - 40px));
   body[data-seatcam] .panel.right { transform: translateX(105%); }
   #seatBar { left: auto; width: 320px; }
 }
+
+/* 胶囊按钮：看台与票价 / 赛道信息（平时收起，点击展开） */
+.pills { position: fixed; top: 96px; left: 20px; z-index: 5; display: flex; gap: 8px; transition: opacity 0.4s, transform 0.5s; }
+.pill { display: flex; align-items: center; gap: 7px; padding: 9px 13px 9px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.pill svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pill .chev { width: 7px; height: 7px; border-right: 1.6px solid var(--sub); border-bottom: 1.6px solid var(--sub); transform: rotate(45deg) translate(-1px, -1px); transition: transform 0.3s; }
+.pill[aria-expanded='true'] { background: var(--glass-strong); }
+.pill[aria-expanded='true'] .chev { transform: rotate(225deg) translate(-1px, -1px); }
+body[data-mode='seats'] .pills { opacity: 0; pointer-events: none; transform: translateX(-30px); }
+.panel.left { top: 150px; max-height: calc(100vh - 420px); }
+.panel.info { top: 150px; left: 20px; width: 296px; max-height: calc(100vh - 420px); transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.35s; }
+body:not([data-open='list']) .panel.left, body:not([data-open='info']) .panel.info { transform: translateY(-12px) scale(0.97); opacity: 0; pointer-events: none; }
+.panel.info .d-scroll { padding: 16px; }
+.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.facts div { padding: 9px 11px; border-radius: 14px; background: var(--fill); }
+.facts small { display: block; font-size: 11px; color: var(--sub); }
+.facts b { display: block; margin-top: 2px; font-size: 14px; font-weight: 650; }
+.fact-note { margin-top: 10px; font-size: 12px; line-height: 1.6; color: var(--sub); }
+@media (max-width: 860px) {
+  .pills { top: auto; left: 0; right: 0; justify-content: center; bottom: max(12px, env(safe-area-inset-bottom)); }
+  body[data-mode='stand'] .pills { opacity: 0; pointer-events: none; transform: translateY(30px); }
+  .panel.left { bottom: calc(max(12px, env(safe-area-inset-bottom)) + 58px); top: auto; max-height: none; }
+  .panel.info { top: auto; left: 10px; right: 10px; width: auto; bottom: calc(max(12px, env(safe-area-inset-bottom)) + 58px); max-height: 52vh; }
+  body:not([data-open='list']) .panel.left, body:not([data-open='info']) .panel.info { transform: translateY(16px); }
+}
+.facts .wide { grid-column: span 2; }
+@media (max-width: 860px) { .panel.info, .panel.left { z-index: 7; } body[data-open] .dock { opacity: 0; pointer-events: none; } }
+.panel.info .panel-head { display: block; } .panel.info .panel-head .muted { display: block; text-align: left; margin-top: 3px; }

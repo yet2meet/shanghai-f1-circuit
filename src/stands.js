@@ -125,6 +125,35 @@ function layoutRows(spec, part) {
   return { rows, tierInfo, prof, H, D, base, tiers };
 }
 
+/**
+ * 把看台里静止不动的普通网格按材质合并成一个（混凝土、墙、挑檐、灯带……）：
+ * 一座看台从几十上百次绘制调用降到十几次，对低配手机帮助最大。
+ * 座位（实例化）、远景条带、点击区域（不可见）等需要单独控制的对象不合并。
+ */
+function mergeStatic(g, keep) {
+  g.updateMatrixWorld(true);
+  const inv = g.matrixWorld.clone().invert(), m = new THREE.Matrix4();
+  const groups = new Map();
+  g.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || keep.has(o) || !o.visible || Array.isArray(o.material)) return;
+    const geo = o.geometry;
+    const key = o.material.uuid + '|' + Object.keys(geo.attributes).sort().join(',') + '|' + (geo.index ? 'i' : 'n');
+    if (!groups.has(key)) groups.set(key, { mat: o.material, list: [], cast: false, recv: false, order: o.renderOrder });
+    const e = groups.get(key);
+    e.list.push(o); e.cast ||= o.castShadow; e.recv ||= o.receiveShadow;
+  });
+  for (const e of groups.values()) {
+    if (e.list.length < 2) continue;
+    const geos = e.list.map((o) => o.geometry.clone().applyMatrix4(m.multiplyMatrices(inv, o.matrixWorld)));
+    const merged = mergeGeometries(geos);
+    if (!merged) continue;
+    for (const o of e.list) { o.parent.remove(o); o.geometry.dispose(); }
+    const mm = new THREE.Mesh(merged, e.mat);
+    mm.castShadow = e.cast; mm.receiveShadow = e.recv; mm.renderOrder = e.order;
+    g.add(mm);
+  }
+}
+
 /** 弧形看台相邻两段之间的扇形填充：看台剖面绕接缝竖轴旋转，台阶与两侧直段对齐 */
 function buildFans(spec, parts, mats) {
   const geos = [];
@@ -443,6 +472,7 @@ function buildSeatStand(spec, mats, seatGeo, common) {
     b.f = ctx.partOf[b.part].f;
   });
 
+  mergeStatic(g, new Set([mesh, carpet, nose]));
   const s = { g, mesh, seats, base: new Float32Array(base), rot: new Float32Array(rot), blocks, parts: ctx.partOf, carpet };
   s.pickSeat = (ray) => pickSeat(s, ray);
   return s;
@@ -532,13 +562,28 @@ function buildGrass(spec, mats, common) {
   let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
   for (let i = 0; i < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); n0 = Math.min(n0, p[i + 1]); n1 = Math.max(n1, p[i + 1]); }
   // 前沿标识牌
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(Math.min(part.L, 60), 1.6, 0.2), common.colorMat(spec.zones.g.color));
-  const front = V(part.front[0], part.front[1]).addScaledVector(f, 4);
-  sign.position.set(front.x, 1.2, front.z); sign.rotation.y = rotY;
+  // 标识牌放在真实轮廓上离赛道最近的那条边的外侧（不规则草坡的外接矩形前沿可能悬在空地上）
+  let bi = 0, bd = Infinity;
+  for (let i = 0; i < nPts; i++) {
+    const mx = (p[i * 2] + p[((i + 1) % nPts) * 2]) / 2, mn = (p[i * 2 + 1] + p[((i + 1) % nPts) * 2 + 1]) / 2;
+    const segLen = Math.hypot(p[((i + 1) % nPts) * 2] - p[i * 2], p[((i + 1) % nPts) * 2 + 1] - p[i * 2 + 1]);
+    if (segLen < 8) continue;
+    const d = trackDist(mx, mn);
+    if (d < bd) { bd = d; bi = i; }
+  }
+  const ax = p[bi * 2], an = p[bi * 2 + 1], bx = p[((bi + 1) % nPts) * 2], bn = p[((bi + 1) % nPts) * 2 + 1];
+  const eLen = Math.hypot(bx - ax, bn - an);
+  let ox = -(bn - an) / eLen, on = (bx - ax) / eLen;                       // 边的法向，取朝外（远离草坡中心）
+  if (ox * ((ax + bx) / 2 - cx) + on * ((an + bn) / 2 - cn) < 0) { ox = -ox; on = -on; }
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(Math.min(eLen * 0.8, 60), 1.6, 0.2), common.colorMat(spec.zones.g.color));
+  sign.position.set((ax + bx) / 2 + ox * 4, 1.2, -((an + bn) / 2 + on * 4));
+  sign.rotation.y = Math.atan2(-ox, on);
   g.add(sign);
-  const hb = new THREE.Mesh(new THREE.BoxGeometry(part.L, 10, part.D), common.hitMat);
-  const c0 = V(part.front[0], part.front[1]).addScaledVector(f, -part.D / 2);
-  hb.position.set(c0.x, 5, c0.z); hb.rotation.y = rotY; hb.visible = false; hb.userData.standId = spec.id;
+  // 点击区域：按真实轮廓挤出（不再用外接矩形，避免点到空地也选中）
+  const hgeo = new THREE.ExtrudeGeometry(polyShape(part.poly), { depth: 10, bevelEnabled: false });
+  hgeo.rotateX(-Math.PI / 2);
+  const hb = new THREE.Mesh(hgeo, common.hitMat);
+  hb.visible = false; hb.userData.standId = spec.id;
   g.add(hb);
   hb.updateMatrixWorld(true);
   common.hitboxes.push(hb);

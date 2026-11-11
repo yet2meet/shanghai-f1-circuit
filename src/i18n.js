@@ -17,6 +17,8 @@ const DICT = {
   day: ['白天', 'Day'],
   night: ['黑夜', 'Night'],
   dayNight: ['昼夜模式', 'Day / night'],
+  pillList: ['看台与票价', 'Stands & prices'],
+  pillInfo: ['赛道信息', 'Circuit info'],
   listTitle: ['看台与票价', 'Grandstands & Prices'],
   listSub: ['三日票 · 人民币', '3-day pass · CNY'],
   footnote: [
