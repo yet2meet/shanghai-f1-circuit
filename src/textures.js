@@ -82,32 +82,63 @@ export function groundTextures() {
   return cache;
 }
 
+// 各类地面的默认参数：tint = 斑驳处偏向的色调（草地偏黄、沥青偏灰白、砂石偏暖），bump = 起伏高度（米），stripe = 草坪修剪条纹强度
+const PRESET = {
+  grass: { tint: [1.12, 1.04, 0.62], tk: 0.35, bump: 0.05, stripe: 0.05 },
+  gravel: { tint: [1.08, 0.98, 0.84], tk: 0.3, bump: 0.06, stripe: 0 },
+  asphalt: { tint: [1.5, 1.5, 1.55], tk: 0.4, bump: 0.035, stripe: 0, gain: 2.2 }, // 深色路面上明暗差不显眼，细节强度放大
+};
+
 /**
  * 给材质加上世界坐标细节纹理（可与 floodlit 等已有 onBeforeCompile 叠加）。
  * kind: 'grass' | 'gravel' | 'asphalt'；size: 一张纹理覆盖的米数；k: 细节强度；mk: 斑驳强度
+ * 三种尺度的明暗细节（近看颗粒、中距离团块、远看斑驳）+ 斑驳处的色调变化 + 凹凸光照（近处有受光起伏，远处淡出）
  */
 export function groundDetail(mat, kind, { size = 4, k = 0.5, mk = 0.18 } = {}) {
-  const T = groundTextures();
+  const T = groundTextures(), P = PRESET[kind];
   const prev = mat.onBeforeCompile;
   const prevKey = mat.customProgramCacheKey?.() ?? '';
   mat.onBeforeCompile = (s, r) => {
     prev?.call(mat, s, r);
-    s.uniforms.uDetail = { value: T[kind] };
-    s.uniforms.uMacro = { value: T.macro };
-    s.uniforms.uDS = { value: 1 / size };
-    s.uniforms.uDK = { value: k };
-    s.uniforms.uMK = { value: mk };
+    Object.assign(s.uniforms, {
+      uDetail: { value: T[kind] }, uMacro: { value: T.macro }, uDS: { value: 1 / size }, uDK: { value: k * (P.gain || 1) }, uMK: { value: mk },
+      uTint: { value: new THREE.Vector3(...P.tint) }, uTK: { value: P.tk }, uBump: { value: P.bump }, uStripe: { value: P.stripe },
+    });
     s.vertexShader = 'varying vec2 vGWP;\n' + s.vertexShader.replace('#include <project_vertex>',
       '#include <project_vertex>\n  vGWP = (modelMatrix * vec4(transformed, 1.0)).xz;');
-    s.fragmentShader = 'varying vec2 vGWP;\nuniform sampler2D uDetail;\nuniform sampler2D uMacro;\nuniform float uDS;\nuniform float uDK;\nuniform float uMK;\n' +
-      s.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+    s.fragmentShader = `varying vec2 vGWP;
+uniform sampler2D uDetail; uniform sampler2D uMacro;
+uniform float uDS; uniform float uDK; uniform float uMK; uniform vec3 uTint; uniform float uTK; uniform float uBump; uniform float uStripe;
+float gdH = 0.5;
+` + s.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
   {
     vec2 p = vGWP * uDS;
-    float d = mix(texture2D(uDetail, p).r, texture2D(uDetail, p * 0.37 + vec2(0.41, 0.17)).r, 0.35);
+    float d1 = texture2D(uDetail, p).r;
+    float d2 = texture2D(uDetail, p * 0.31 + vec2(0.41, 0.17)).r;
+    float d3 = texture2D(uDetail, p * 0.083 + vec2(0.13, 0.67)).r;
     float m = texture2D(uMacro, vGWP * 0.011).r;
-    diffuseColor.rgb *= clamp(1.0 + (d - 0.5) * 2.0 * uDK + (m - 0.5) * 2.0 * uMK, 0.0, 2.0);
+    float m2 = texture2D(uMacro, vGWP * 0.043 + vec2(0.3, 0.6)).r;
+    float d = d1 * 0.45 + d2 * 0.33 + d3 * 0.22;
+    gdH = d1 * 0.6 + d2 * 0.4;
+    float shade = 1.0 + (d - 0.5) * 2.0 * uDK + (m - 0.5) * 2.0 * uMK + (m2 - 0.5) * uMK;
+    // 草坪修剪条纹：约 7 m 宽的明暗相间带
+    float st = sin(dot(vGWP, vec2(0.62, 0.78)) * 0.45);
+    shade += uStripe * smoothstep(-0.25, 0.25, st) - uStripe * 0.5;
+    diffuseColor.rgb *= clamp(shade, 0.0, 2.0);
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * uTint, clamp((m * 0.6 + m2 * 0.4 - 0.42) * 3.0, 0.0, 1.0) * uTK);
+  }`).replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+  {
+    // 由细节高度的屏幕空间导数扰动法线（与 three.js 的 bumpMap 同一算法），60 m 以外淡出
+    float fade = uBump * (1.0 - smoothstep(15.0, 60.0, length(vViewPosition)));
+    if (fade > 0.0) {
+      vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition);
+      vec3 r1 = cross(sy, normal), r2 = cross(normal, sx);
+      float det = dot(sx, r1);
+      vec2 dh = vec2(dFdx(gdH), dFdy(gdH)) * fade;
+      normal = normalize(abs(det) * normal - sign(det) * (dh.x * r1 + dh.y * r2));
+    }
   }`);
   };
-  mat.customProgramCacheKey = () => prevKey + '|gd-' + kind;
+  mat.customProgramCacheKey = () => prevKey + '|gd2-' + kind;
   return mat;
 }
