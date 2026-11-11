@@ -53,10 +53,11 @@ function start() {
   root.id = 'guide';
   root.innerHTML = `<div class="g-ring"></div>
     <div class="g-card glass" role="dialog" aria-modal="true" aria-labelledby="gTitle">
+      <button class="g-skip">${t('跳过', 'Skip')}</button>
       <div class="g-icon"></div>
       <h3 id="gTitle"></h3><p></p>
       <div class="g-foot"><div class="g-dots"></div>
-        <div class="g-btns"><button class="g-skip">${t('跳过', 'Skip')}</button><button class="g-prev">${t('上一步', 'Back')}</button><button class="g-next"></button></div></div>
+        <div class="g-btns"><button class="g-prev">${t('上一步', 'Back')}</button><button class="g-next"></button></div></div>
     </div>`;
   document.body.appendChild(root);
   const ring = root.querySelector('.g-ring'), card = root.querySelector('.g-card');
