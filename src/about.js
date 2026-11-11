@@ -16,8 +16,8 @@ const sections = () => [
     'Formula 1、F1 标志及各车队名称、标志均为其各自权利人所有，本站按项目方获得的授权使用，仅用于识别与展示。',
     'Formula 1, the F1 logo and all team names and logos are the property of their respective owners and are used under authorisation obtained by the project, for identification and display only.')],
   [t('数据来源', 'Data sources'), t(
-    '票价：2026 F1 喜力中国大奖赛官方票价表（久事体育）。地图数据 © OpenStreetMap 贡献者（ODbL）。三维渲染：three.js。',
-    'Prices: official 2026 F1 Heineken Chinese Grand Prix price list (Juss Sports). Map data © OpenStreetMap contributors (ODbL). 3D rendering: three.js.')],
+    '票价：2026 F1 喜力中国大奖赛官方票价表（久事体育）。地图数据 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 贡献者（ODbL）。三维渲染：three.js。',
+    'Prices: official 2026 F1 Heineken Chinese Grand Prix price list (Juss Sports). Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL). 3D rendering: three.js.')],
 ];
 
 export function initAbout() {
@@ -25,10 +25,14 @@ export function initAbout() {
   const bar = document.createElement('button');
   bar.id = 'aboutBar';
   bar.className = 'about-bar';
-  const label = () => { bar.innerHTML = `© ${YEAR} ${AUTHOR} · <u>${t('关于与免责声明', 'About & disclaimer')}</u>`; };
+  const label = () => { bar.innerHTML = `© <i>${YEAR} </i>${AUTHOR} · <u>${t('关于', 'About')}<i>${t('与免责声明', ' & disclaimer')}</i></u>`; };
   label();
-  bar.addEventListener('click', open);
-  document.body.appendChild(bar);
+  bar.addEventListener('click', (e) => { e.stopPropagation(); open(); });
+  // 电脑：右下角一行小字；手机：挂在小地图卡片正下方的一个小胶囊（地图署名收进“关于”面板）
+  const mq = matchMedia('(max-width: 860px)');
+  const place = () => (mq.matches ? document.getElementById('minimap') : document.body).appendChild(bar);
+  place();
+  mq.addEventListener('change', place);
   onLang(() => { label(); if (dlg) fill(); });
 
   // 控制台署名

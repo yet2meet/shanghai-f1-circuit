@@ -287,7 +287,7 @@ body[data-mode='seats'] .panel.left { transform: translateX(calc(-100% - 40px));
 
 .footnote a { color: inherit; }
 .osm-credit { position: fixed; right: 12px; bottom: 6px; z-index: 3; font-size: 10px; color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); text-decoration: none; }
-@media (max-width: 860px) { .osm-credit { bottom: auto; top: calc(max(10px, env(safe-area-inset-top)) + 186px); left: 12px; right: auto; } }
+@media (max-width: 860px) { .osm-credit { display: none; } } /* 手机：地图署名在小地图下方胶囊点开的“关于”面板里 */
 
 .chips.wide { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .seat-note { font-size: 11px; line-height: 1.5; color: var(--sub); margin: 8px 2px 0; }
@@ -340,6 +340,7 @@ body[data-mode='seats'] .panel.left { transform: translateX(calc(-100% - 40px));
 
 /* 署名与“关于” */
 .about-bar { position: fixed; right: 190px; bottom: 6px; z-index: 3; font-size: 10px; color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
+.about-bar i { font-style: normal; }
 .about-bar u { text-decoration: none; border-bottom: 1px solid rgba(255, 255, 255, 0.5); }
 .about-bar:hover { color: #fff; }
 .sp-credit { margin-top: 14px; font-size: 11px; letter-spacing: 0.06em; color: rgba(255, 255, 255, 0.45); text-align: center; }
@@ -352,8 +353,12 @@ body[data-mode='seats'] .panel.left { transform: translateX(calc(-100% - 40px));
 #about .ab-head h3 { font-size: 17px; font-weight: 650; }
 #about .ab-head p { font-size: 12px; color: var(--sub); margin-top: 2px; }
 #about h4 { font-size: 13px; font-weight: 650; margin: 16px 0 5px; }
+#about p a { color: var(--accent); text-decoration: none; }
 #about p { font-size: 12.5px; line-height: 1.65; color: var(--sub); }
 #about .ab-sig { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--hair); font-size: 11px; text-align: center; }
 @media (max-width: 860px) {
-  .about-bar { right: auto; left: 12px; bottom: auto; top: calc(max(10px, env(safe-area-inset-top)) + 200px); }
+  .about-bar { position: absolute; left: 0; right: 0; top: calc(100% + 6px); bottom: auto; padding: 5px 0; border-radius: 999px; font-size: 9.5px; line-height: 1.2; text-align: center; white-space: nowrap; color: var(--sub); text-shadow: none;
+    background: var(--glass); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); border: 1px solid var(--stroke); }
+  .about-bar i { display: none; }
+  .about-bar u { border-bottom: 0; color: var(--text); font-weight: 600; }
 }
