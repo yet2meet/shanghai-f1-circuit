@@ -316,3 +316,20 @@ body[data-mode='seats'] .panel.left { transform: translateX(calc(-100% - 40px));
 #guide .g-btns .g-next:hover { background: var(--accent); filter: brightness(1.08); }
 @media (max-width: 860px) { .help-btn { width: 36px; height: 36px; } #guide .g-card { width: calc(100vw - 28px); } }
 #guide .g-ring.none { box-shadow: 0 0 0 9999px rgba(8, 12, 24, 0.42); }
+
+/* 语言切换 */
+.lang-seg button { min-width: 44px; justify-content: center; padding: 8px 10px; font-size: 13px; letter-spacing: 0.02em; }
+.lang-seg.en .seg-thumb { transform: translateX(100%); }
+@media (max-width: 860px) { .lang-seg button { min-width: 36px; padding: 6px 6px; font-size: 12px; } }
+.panel-head h2 { white-space: nowrap; }
+.panel-head .muted { white-space: nowrap; text-align: right; }
+.brand .b-short { display: none; }
+@media (max-width: 860px) {
+  .brand .b-long { display: none; }
+  .brand .b-short { display: inline; }
+  .top-right { gap: 6px; }
+  /* 手机上语言切换只显示“另一种语言”的单个按钮 */
+  .lang-seg { padding: 4px; }
+  .lang-seg .seg-thumb, .lang-seg button.on { display: none; }
+  .lang-seg button { min-width: 34px; color: var(--text); font-weight: 650; }
+}

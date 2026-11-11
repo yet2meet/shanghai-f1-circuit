@@ -15,6 +15,7 @@ import { buildCars } from './cars.js';
 import { buildOSM } from './osm.js';
 import { buildKarting } from './karting.js';
 import { initGuide } from './guide.js';
+import { t as tr, L, onLang, isEn } from './i18n.js';
 import { buildPitBuilding } from './pitbuilding.js';
 
 const $ = (s) => document.querySelector(s);
@@ -64,19 +65,19 @@ const step = (p, text) => {
   splash?.progress(p, text);
   return new Promise((r) => setTimeout(r, 40));
 };
-await step(0.3, '铺设赛道');
+await step(0.3, tr('铺设赛道', 'Laying the track'));
 const track = buildTrack(scene);
-await step(0.45, '搭建看台与座位');
+await step(0.45, tr('搭建看台与座位', 'Building grandstands and seats'));
 const { stands, hitboxes } = buildStands(scene);
-await step(0.6, '搭建维修区与围场');
+await step(0.6, tr('搭建维修区与围场', 'Building the pit lane and paddock'));
 // 可选的授权素材清单（public/brand/manifest.json），没有则使用文字名称牌
 const brand = await fetch('./brand/manifest.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
 const pitb = buildPitBuilding(scene, brand);
 const venue = buildVenue(scene, track, pitb);
-await step(0.68, '加载周边道路、水系与建筑');
+await step(0.68, tr('加载周边道路、水系与建筑', 'Loading roads, water and buildings'));
 const osm = buildOSM(scene);
 const karting = buildKarting(scene);
-await step(0.72, '种植草木与周边环境');
+await step(0.72, tr('种植草木与周边环境', 'Planting trees and surroundings'));
 const env = buildEnvironment(scene, track, stands, renderer);
 const cars = buildCars(scene, track);
 const standById = Object.fromEntries(stands.map((s) => [s.spec.id, s]));
@@ -199,8 +200,10 @@ function seatWorld(s, i) {
   return seatPos(s, i);
 }
 // 排号、座号是模型内按位置的计数（每层从前往后数排，面向赛道从左往右数座），不是票面座号
-const seatName = (s, seat) => `${s.spec.zones[seat.zone].name} · 第 ${seat.row} 排 · 左起第 ${seat.num} 座`;
-const sideName = (b) => (b.side === 't1' ? '（1 号弯一侧）' : b.side === 't16' ? '（16 号弯一侧）' : '');
+const seatName = (s, seat) => (isEn()
+  ? `${L(s.spec.zones[seat.zone], 'name')} · Row ${seat.row} · Seat ${seat.num} from left`
+  : `${s.spec.zones[seat.zone].name} · 第 ${seat.row} 排 · 左起第 ${seat.num} 座`);
+const sideName = (b) => (b.side === 't1' ? tr('（1 号弯一侧）', ' (Turn 1 side)') : b.side === 't16' ? tr('（16 号弯一侧）', ' (Turn 16 side)') : '');
 const isMobile = () => innerWidth <= 860;
 
 function blockView(s, b) {
@@ -215,25 +218,31 @@ const mainColor = (spec) => spec.color || Object.values(spec.zones).slice(-1)[0]
 const X_ICON = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>';
 
 const listEl = $('#listItems');
-STANDS.forEach((spec) => {
-  const multi = Object.keys(spec.zones).length > 1;
-  const b = document.createElement('button');
-  b.className = 'item';
-  b.dataset.id = spec.id;
-  b.innerHTML = `<div class="badge" style="background:${mainColor(spec)}">${spec.code}</div>
-    <div class="item-main"><b>${spec.name}</b><span>${spec.turns}</span></div>
-    <div class="item-price">${fmtPrice(minPrice(spec))}<small>${multi ? '起 · ' : ''}三日票</small></div>`;
-  b.onclick = () => selectStand(spec.id);
-  listEl.appendChild(b);
-});
+const fromTxt = () => tr(' 起', '+');
+function renderList() {
+  listEl.innerHTML = '';
+  STANDS.forEach((spec) => {
+    const multi = Object.keys(spec.zones).length > 1;
+    const b = document.createElement('button');
+    b.className = 'item';
+    b.dataset.id = spec.id;
+    b.innerHTML = `<div class="badge" style="background:${mainColor(spec)}">${spec.code}</div>
+      <div class="item-main"><b>${L(spec, 'name')}</b><span>${L(spec, 'turns')}</span></div>
+      <div class="item-price">${fmtPrice(minPrice(spec))}<small>${multi ? tr('起 · ', 'from · ') : ''}${tr('三日票', '3-day')}</small></div>`;
+    b.onclick = () => selectStand(spec.id);
+    listEl.appendChild(b);
+  });
+}
+renderList();
 
 // ───────────────────────── UI：场景标签 ─────────────────────────
 const labelsEl = $('#labels');
 const labels = [];
+const standLabel = (s) => `<em style="background:${mainColor(s.spec)}">${s.spec.code}</em><b>${L(s.spec, 'name')}</b><span>${fmtPrice(minPrice(s.spec))}${Object.keys(s.spec.zones).length > 1 ? fromTxt() : ''}</span>`;
 stands.forEach((s) => {
   const el = document.createElement('div');
   el.className = 'label';
-  el.innerHTML = `<em style="background:${mainColor(s.spec)}">${s.spec.code}</em><b>${s.spec.name}</b><span>${fmtPrice(minPrice(s.spec))}${Object.keys(s.spec.zones).length > 1 ? ' 起' : ''}</span>`;
+  el.innerHTML = standLabel(s);
   el.onclick = () => selectStand(s.spec.id);
   labelsEl.appendChild(el);
   labels.push({ el, pos: s.labelPos, kind: 'stand', id: s.spec.id, ax: -0.5, ay: -1, dy: -16 });
@@ -250,10 +259,10 @@ stands.forEach((s) => s.blocks && new Set(s.blocks.map((b) => b.zone)).size > 1 
   const el = document.createElement('div');
   el.className = 'sec off';
   el.style.setProperty('--c', s.spec.zones[b.zone].color);
-  el.textContent = b.code;
+  el.textContent = L(s.spec.zones[b.zone], 'name');
   el.onclick = () => blockView(s, b);
   labelsEl.appendChild(el);
-  labels.push({ el, pos: b.label, kind: 'block', id: s.spec.id, ax: -0.5, ay: -1, dy: 0 });
+  labels.push({ el, pos: b.label, kind: 'block', id: s.spec.id, zone: b.zone, ax: -0.5, ay: -1, dy: 0 });
 }));
 
 // ───────────────────────── UI：小地图 ─────────────────────────
@@ -274,9 +283,9 @@ const mm = (() => {
     return `<text class="mm-turn" x="${pz.toFixed(0)}" y="${(-px + 14).toFixed(0)}">${n}</text>`;
   }).join('');
   const marks = stands.map((s) => `<g class="mm-stand" data-id="${s.spec.id}" transform="translate(${s.center.z.toFixed(0)} ${(-s.center.x).toFixed(0)})">
-      <title>${s.spec.name}</title><circle class="mm-ring" r="62"/><circle r="46" fill="${mainColor(s.spec)}"/><text y="17">${s.spec.code}</text></g>`).join('');
+      <title>${L(s.spec, 'name')}</title><circle class="mm-ring" r="62"/><circle r="46" fill="${mainColor(s.spec)}"/><text y="17">${s.spec.code}</text></g>`).join('');
   const el = $('#minimap');
-  el.innerHTML = `<svg viewBox="${x0} ${z0} ${x1 - x0} ${z1 - z0}" role="img" aria-label="赛道小地图">
+  el.innerHTML = `<svg viewBox="${x0} ${z0} ${x1 - x0} ${z1 - z0}" role="img" aria-label="${tr('赛道小地图', 'Track map')}">
     <path class="mm-track-o" d="${d}Z"/><path class="mm-track" d="${d}Z"/>
     <line class="mm-start" x1="-120" y1="478" x2="-120" y2="522"/>
     ${turns}${marks}
@@ -316,9 +325,9 @@ function updateLabels() {
 // ───────────────────────── UI：详情面板 ─────────────────────────
 const detail = $('#detail');
 function zoneRow(z) {
-  const sub = z.day ? `周五 ${fmtPrice(z.day.fri)} · 周六 ${fmtPrice(z.day.sat)} · 周日 ${fmtPrice(z.day.sun)}` : z.note || '';
+  const sub = z.day ? `${tr('周五', 'Fri')} ${fmtPrice(z.day.fri)} · ${tr('周六', 'Sat')} ${fmtPrice(z.day.sat)} · ${tr('周日', 'Sun')} ${fmtPrice(z.day.sun)}` : L(z, 'note') || '';
   return `<div class="zone"><i style="background:${z.color}"></i>
-    <div class="zone-main"><b>${z.name}</b><em class="tag ok">官方票价</em><span>${sub}</span></div>
+    <div class="zone-main"><b>${L(z, 'name')}</b><em class="tag ok">${tr('官方票价', 'Official')}</em><span>${sub}</span></div>
     <div class="zone-price">${fmtPrice(z.price)}</div></div>`;
 }
 function renderDetail() {
@@ -327,16 +336,16 @@ function renderDetail() {
   detail.classList.remove('hidden');
   const spec = s.spec;
   const head = `<div class="d-head"><div class="badge" style="background:${mainColor(spec)}">${spec.code}</div>
-    <div><h2>${spec.name}</h2><p>${spec.turns}</p></div>
-    <button class="close" data-act="close" aria-label="关闭">${X_ICON}</button></div>`;
+    <div><h2>${L(spec, 'name')}</h2><p>${L(spec, 'turns')}</p></div>
+    <button class="close" data-act="close" aria-label="${tr('关闭', 'Close')}">${X_ICON}</button></div>`;
 
   if (state.mode === 'seats') {
     const picked = [...state.selected.values()];
     const rows = picked.map((p) => {
       const seat = p.stand.seats[p.idx], z = p.stand.spec.zones[seat.zone];
-      return `<div class="seat-row" data-act="view" data-key="${p.stand.spec.id}:${p.idx}" title="点击切换到该座位视角"><i style="background:${z.color}"></i>
-        <div>${seatName(p.stand, seat)}<small>${z.name} · 三日票</small></div><b>${fmtPrice(z.price)}</b>
-        <button data-act="remove" data-key="${p.stand.spec.id}:${p.idx}" aria-label="移除">${X_ICON}</button></div>`;
+      return `<div class="seat-row" data-act="view" data-key="${p.stand.spec.id}:${p.idx}" title="${tr('点击切换到该座位视角', 'View from this seat')}"><i style="background:${z.color}"></i>
+        <div>${seatName(p.stand, seat)}<small>${L(z, 'name')} · ${tr('三日票', '3-day pass')}</small></div><b>${fmtPrice(z.price)}</b>
+        <button data-act="remove" data-key="${p.stand.spec.id}:${p.idx}" aria-label="${tr('移除', 'Remove')}">${X_ICON}</button></div>`;
     }).join('');
     // 票区快速定位：只列官方票区（A 看台的 A上 被铂金区分成 1 号弯一侧和 16 号弯一侧两段）
     const zoneCount = new Set(s.blocks.map((b) => b.zone)).size;
@@ -344,42 +353,42 @@ function renderDetail() {
     const chipList = s.blocks.filter((b) => { const k = b.zone + b.side; if (seen.has(k)) return false; seen.add(k); return true; })
       .sort((x, y) => y.tier - x.tier);
     const sections = zoneCount > 1
-      ? `<div class="sec-title">官方票区 · 点击定位</div>
-        <div class="chips wide">${chipList.map((b) => `<button class="chip" data-act="block" data-b="${b.idx}" style="--c:${spec.zones[b.zone].color}">${b.code}${sideName(b)}</button>`).join('')}</div>`
-      : `<div class="sec-title">官方票区</div><p class="d-desc" style="margin:0 2px 12px">整座看台为同一票区：${Object.values(spec.zones)[0].name}。官方未公布更细的分区编号。</p>`;
+      ? `<div class="sec-title">${tr('官方票区 · 点击定位', 'Official zones · tap to locate')}</div>
+        <div class="chips wide">${chipList.map((b) => `<button class="chip" data-act="block" data-b="${b.idx}" style="--c:${spec.zones[b.zone].color}">${L(spec.zones[b.zone], 'name')}${sideName(b)}</button>`).join('')}</div>`
+      : `<div class="sec-title">${tr('官方票区', 'Official zone')}</div><p class="d-desc" style="margin:0 2px 12px">${tr(`整座看台为同一票区：${Object.values(spec.zones)[0].name}。官方未公布更细的分区编号。`, `The whole stand is one zone: ${L(Object.values(spec.zones)[0], 'name')}. No finer section numbers are published officially.`)}</p>`;
     detail.innerHTML = `<div class="d-scroll">${head}
       <div class="legend" style="margin-top:16px">
-        ${Object.values(spec.zones).map((z) => `<span><i style="background:${z.color}"></i>${z.name} ${fmtPrice(z.price)}</span>`).join('')}
+        ${Object.values(spec.zones).map((z) => `<span><i style="background:${z.color}"></i>${L(z, 'name')} ${fmtPrice(z.price)}</span>`).join('')}
       </div>
       ${sections}
-      <div class="sec-title" style="margin-top:14px">已标记座位（${picked.length}/${MAX_SEATS}）</div>
-      ${rows || '<div class="cart-empty">点击座位标记，双击直接进入座位视角</div>'}
-      <p class="seat-note">排号、座号为模型内按位置的计数（从前往后数排、面向赛道从左往右数座），不是票面座号。</p>
+      <div class="sec-title" style="margin-top:14px">${tr('已标记座位', 'Marked seats')}（${picked.length}/${MAX_SEATS}）</div>
+      ${rows || `<div class="cart-empty">${tr('点击座位标记，双击直接进入座位视角', 'Tap a seat to mark it; double-tap to view from it')}</div>`}
+      <p class="seat-note">${tr('排号、座号为模型内按位置的计数（从前往后数排、面向赛道从左往右数座），不是票面座号。', 'Row and seat numbers are counted by position in the model (rows front to back, seats left to right facing the track) and are not the numbers printed on tickets.')}</p>
       <div class="actions">
-        <button class="btn primary" data-act="seatview" ${picked.length ? '' : 'disabled'}>座位视角</button>
+        <button class="btn primary" data-act="seatview" ${picked.length ? '' : 'disabled'}>${tr('座位视角', 'Seat view')}</button>
         <div class="btn-row">
-          <button class="btn ghost" data-act="back">返回看台</button>
+          <button class="btn ghost" data-act="back">${tr('返回看台', 'Back to stand')}</button>
         </div>
       </div></div>`;
     return;
   }
 
   const stats = spec.type === 'seats'
-    ? `<div class="stat"><small>入口</small><b>${spec.gate}</b></div>
-       <div class="stat"><small>模型座位</small><b>${s.seats.length.toLocaleString()}</b></div>
-       <div class="stat"><small>官方票区</small><b>${new Set(s.blocks.map((b) => b.zone)).size} 个</b></div>`
-    : `<div class="stat"><small>入口</small><b>${spec.gate}</b></div>
-       <div class="stat"><small>类型</small><b>${spec.type === 'grass' ? '草地' : '款待'}</b></div>
-       <div class="stat"><small>座位</small><b>${spec.type === 'grass' ? '不对号' : '包厢'}</b></div>`;
+    ? `<div class="stat"><small>${tr('入口', 'Entrance')}</small><b>${L(spec, 'gate')}</b></div>
+       <div class="stat"><small>${tr('模型座位', 'Seats (model)')}</small><b>${s.seats.length.toLocaleString()}</b></div>
+       <div class="stat"><small>${tr('官方票区', 'Zones')}</small><b>${new Set(s.blocks.map((b) => b.zone)).size}${tr(' 个', '')}</b></div>`
+    : `<div class="stat"><small>${tr('入口', 'Entrance')}</small><b>${L(spec, 'gate')}</b></div>
+       <div class="stat"><small>${tr('类型', 'Type')}</small><b>${spec.type === 'grass' ? tr('草地', 'Grass') : tr('款待', 'Hospitality')}</b></div>
+       <div class="stat"><small>${tr('座位', 'Seating')}</small><b>${spec.type === 'grass' ? tr('不对号', 'Unreserved') : tr('包厢', 'Suite')}</b></div>`;
   detail.innerHTML = `<div class="d-scroll">${head}
-    <p class="d-desc">${spec.desc}</p>
+    <p class="d-desc">${L(spec, 'desc')}</p>
     <div class="stats">${stats}</div>
-    <div class="sec-title">票价 · 三日票</div>
+    <div class="sec-title">${tr('票价 · 三日票', 'Prices · 3-day pass')}</div>
     ${Object.values(spec.zones).map(zoneRow).join('')}
     <div class="actions">
       ${spec.type === 'seats'
-        ? `<button class="btn primary" data-act="seats"><svg viewBox="0 0 24 24"><path d="M6 11V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4M4 13a2 2 0 0 1 4 0v2h8v-2a2 2 0 0 1 4 0v5H4zM7 18v2M17 18v2"/></svg>进入选座</button>`
-        : `<button class="btn ghost" disabled>${spec.type === 'grass' ? '草地票不对号入座' : '款待套票需官方渠道预订'}</button>`}
+        ? `<button class="btn primary" data-act="seats"><svg viewBox="0 0 24 24"><path d="M6 11V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4M4 13a2 2 0 0 1 4 0v2h8v-2a2 2 0 0 1 4 0v5H4zM7 18v2M17 18v2"/></svg>${tr('进入选座', 'Choose seats')}</button>`
+        : `<button class="btn ghost" disabled>${spec.type === 'grass' ? tr('草地票不对号入座', 'Grass areas are unreserved') : tr('款待套票需官方渠道预订', 'Hospitality is booked through official channels')}</button>`}
     </div></div>`;
 }
 detail.addEventListener('click', (e) => {
@@ -407,8 +416,8 @@ function syncList() {
   mm.marks.forEach((g) => g.classList.toggle('on', state.stand?.spec.id === g.dataset.id));
   listEl.querySelectorAll('.item').forEach((el) => el.classList.toggle('active', state.stand?.spec.id === el.dataset.id));
   $('#hint').textContent = state.mode === 'seats'
-    ? '滚轮放大 · 点击票区或座位 · 双击进入座位视角 · Esc 返回'
-    : '拖动旋转 · 滚轮缩放 · 右键平移 · 点击看台探索';
+    ? tr('滚轮放大 · 点击票区或座位 · 双击进入座位视角 · Esc 返回', 'Scroll to zoom · click a zone or seat · double-click for seat view · Esc to go back')
+    : tr('拖动旋转 · 滚轮缩放 · 右键平移 · 点击看台探索', 'Drag to rotate · scroll to zoom · right-drag to pan · click a stand to explore');
 }
 
 // ───────────────────────── 交互流程 ─────────────────────────
@@ -446,7 +455,7 @@ function toggleSeat(key) {
   const s = standById[id], idx = +idxS;
   if (state.selected.has(key)) state.selected.delete(key);
   else {
-    if (state.selected.size >= MAX_SEATS) return toast(`最多同时标记 ${MAX_SEATS} 个座位`);
+    if (state.selected.size >= MAX_SEATS) return toast(tr(`最多同时标记 ${MAX_SEATS} 个座位`, `You can mark up to ${MAX_SEATS} seats`));
     state.selected.set(key, { stand: s, idx });
   }
   paintSeat(s, idx);
@@ -459,7 +468,7 @@ function seatView(s, idx) {
   const dir = seatFacing(s, idx).clone().multiplyScalar(14).add(new THREE.Vector3(0, -2.85, 0)).normalize();
   flyTo(eye, eye.clone().addScaledVector(dir, SEAT_LOOK), 1.4);
   enterSeatCam(eye);
-  toast(isMobile() ? '座位视角 · 拖动环顾 · ± 望远' : '座位视角 · 拖动环顾 · 滚轮望远');
+  toast(isMobile() ? tr('座位视角 · 拖动环顾 · ± 望远', 'Seat view · drag to look around · ± to zoom') : tr('座位视角 · 拖动环顾 · 滚轮望远', 'Seat view · drag to look around · scroll to zoom'));
 }
 
 // ───────────────────────── 指针拾取 ─────────────────────────
@@ -500,7 +509,7 @@ function pick(x, y) {
     }
     if (i >= 0) {
       const seat = s.seats[i], z = s.spec.zones[seat.zone];
-      tooltip.innerHTML = `<b>${seatName(s, seat)}</b><small>${state.selected.has(s.spec.id + ':' + i) ? '已标记 · 再次点击取消' : `${z.name} · 三日票 ${fmtPrice(z.price)}`}</small>`;
+      tooltip.innerHTML = `<b>${seatName(s, seat)}</b><small>${state.selected.has(s.spec.id + ':' + i) ? tr('已标记 · 再次点击取消', 'Marked · click again to unmark') : `${L(z, 'name')} · ${tr('三日票', '3-day')} ${fmtPrice(z.price)}`}</small>`;
       tooltip.style.transform = `translate(${Math.min(x + 16, innerWidth - 240)}px,${y + 18}px)`;
       tooltip.classList.add('on');
       canvas.style.cursor = 'pointer';
@@ -537,7 +546,7 @@ function setNight(on) {
   seg.classList.toggle('night', on);
   seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', (b.dataset.mode === 'night') === on));
   document.documentElement.dataset.theme = on ? 'dark' : 'light';
-  toast(on ? '黑夜模式 · 赛道灯光自动开启' : '白天模式');
+  toast(on ? tr('黑夜模式 · 赛道灯光自动开启', 'Night mode · circuit lights on') : tr('白天模式', 'Day mode'));
 }
 seg.addEventListener('click', (e) => {
   const b = e.target.closest('button');
@@ -655,15 +664,25 @@ function tick(dt) {
 }
 
 // 预编译着色器并渲染第一帧，然后让启动页的地球转到上海、放大、淡出
-await step(0.88, '点亮灯光与材质');
+await step(0.88, tr('点亮灯光与材质', 'Lighting and materials'));
 try { await renderer.compileAsync(scene, camera); } catch { /* 不支持异步编译时首帧会同步编译 */ }
 camera.lookAt(controls.target);
 composer.render();
-await step(1, '即将抵达上海');
+await step(1, tr('即将抵达上海', 'Arriving in Shanghai'));
 await splash?.finish();
 clock.getDelta();
 flyTo(HOME.pos, HOME.target, 2.8); // 开场镜头
 initGuide(); // 第一次打开时的新手引导
+onLang(() => {
+  renderList(); renderDetail(); syncList();
+  labels.forEach((l) => {
+    if (l.kind === 'stand') l.el.innerHTML = standLabel(standById[l.id]);
+    else if (l.kind === 'block') l.el.textContent = L(standById[l.id].spec.zones[l.zone], 'name');
+  });
+  const svg = $('#minimap svg'); if (svg) svg.setAttribute('aria-label', tr('赛道小地图', 'Track map'));
+  $('#minimap').querySelectorAll('.mm-stand').forEach((g) => { const ti = g.querySelector('title'); if (ti) ti.textContent = L(standById[g.dataset.id].spec, 'name'); });
+  toast(tr('已切换为中文', 'Switched to English'));
+});
 requestAnimationFrame(frame);
 
 window.__app = { state, camera, controls, scene, renderer, stands, selectStand, enterSeats, goHome, setNight, toggleSeat, seatView, track, dolly, get seatCam() { return seatCam; }, perf };

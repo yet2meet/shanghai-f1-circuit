@@ -1,20 +1,28 @@
 // 新手引导：第一次打开时逐步指出主要操作；右上角“?”可随时重看
+import { t, onLang } from './i18n.js';
+
 const KEY = 'sic-guide-v1';
 
 const mobile = () => innerWidth <= 860;
 const STEPS = [
-  { title: '欢迎来到上海国际赛车场', body: '赛道、看台与建筑均按真实测绘数据还原。花 20 秒了解几个基本操作。', icon: '🏁' },
-  {
-    title: '自由查看', icon: '🖐',
+  { icon: '🏁', title: () => t('欢迎来到上海国际赛车场', 'Welcome to Shanghai International Circuit'),
+    body: () => t('赛道、看台与建筑均按真实测绘数据还原。花 20 秒了解几个基本操作。', 'The track, grandstands and buildings are rebuilt from real survey data. Here are the basics in 20 seconds.') },
+  { icon: '🖐', title: () => t('自由查看', 'Look around'),
     body: () => (mobile()
-      ? '单指拖动旋转视角，双指捏合缩放，双指拖动平移。'
-      : '按住左键拖动旋转，滚轮缩放，按住右键拖动平移。'),
-  },
-  { target: '#list', title: '看台与票价', body: '这里列出每个看台的位置和官方票价。点击任一看台，镜头会飞到那里，并显示看台详情。' },
-  { target: '#list', title: '选座与座位视角', body: '在看台详情里点「进入选座」，再点选座位；双击座位或点「座位视角」，就能坐在这个座位上看赛道。' },
-  { target: '#minimap', title: '赛道小地图', body: '小地图标出了 16 个弯道和各看台的位置，点击看台圆点也能直接跳转。' },
-  { target: '#themeSeg', title: '白天 / 黑夜', body: '切换到黑夜，赛道照明、看台和建筑的灯光会自动亮起。' },
-  { target: '.dock', title: '回到全景', body: '看迷路了？随时点「全景」回到俯瞰视角。现在开始探索吧。' },
+      ? t('单指拖动旋转视角，双指捏合缩放，双指拖动平移。', 'Drag with one finger to rotate, pinch to zoom, drag with two fingers to pan.')
+      : t('按住左键拖动旋转，滚轮缩放，按住右键拖动平移。', 'Left-drag to rotate, scroll to zoom, right-drag to pan.')) },
+  { target: '#list', title: () => t('看台与票价', 'Grandstands & prices'),
+    body: () => t('这里列出每个看台的位置和官方票价。点击任一看台，镜头会飞到那里，并显示看台详情。', 'Every grandstand with its location and official price. Click one to fly there and open its details.') },
+  { target: '#list', title: () => t('选座与座位视角', 'Seats & seat view'),
+    body: () => t('在看台详情里点「进入选座」，再点选座位；双击座位或点「座位视角」，就能坐在这个座位上看赛道。', 'In a stand’s details, choose "Choose seats" and pick a seat. Double-click it or press "Seat view" to see the track from that seat.') },
+  { target: '#minimap', title: () => t('赛道小地图', 'Track map'),
+    body: () => t('小地图标出了 16 个弯道和各看台的位置，点击看台圆点也能直接跳转。', 'The map shows all 16 turns and every stand — click a stand’s dot to jump there.') },
+  { target: '#themeSeg', title: () => t('白天 / 黑夜', 'Day / night'),
+    body: () => t('切换到黑夜，赛道照明、看台和建筑的灯光会自动亮起。', 'Switch to night and the circuit floodlights, stands and buildings light up.') },
+  { target: '#langSeg', title: () => t('中文 / English', 'English / 中文'),
+    body: () => t('随时切换界面语言。', 'Switch the interface language at any time.') },
+  { target: '.dock', title: () => t('回到全景', 'Back to overview'),
+    body: () => t('看迷路了？随时点「全景」回到俯瞰视角。现在开始探索吧。', 'Lost? Press "Overview" to return to the bird’s-eye view. Enjoy exploring.') },
 ];
 
 export function initGuide({ force = false } = {}) {
@@ -29,11 +37,12 @@ function addHelpButton() {
   const b = document.createElement('button');
   b.id = 'guideBtn';
   b.className = 'help-btn glass';
-  b.title = '操作引导';
-  b.setAttribute('aria-label', '操作引导');
+  b.title = t('操作引导', 'Quick guide');
+  b.setAttribute('aria-label', b.title);
   b.textContent = '?';
   b.addEventListener('click', start);
   document.querySelector('.top-right')?.appendChild(b);
+  onLang(() => { b.title = t('操作引导', 'Quick guide'); b.setAttribute('aria-label', b.title); });
 }
 
 let root = null;
@@ -47,7 +56,7 @@ function start() {
       <div class="g-icon"></div>
       <h3 id="gTitle"></h3><p></p>
       <div class="g-foot"><div class="g-dots"></div>
-        <div class="g-btns"><button class="g-skip">跳过</button><button class="g-prev">上一步</button><button class="g-next">下一步</button></div></div>
+        <div class="g-btns"><button class="g-skip">${t('跳过', 'Skip')}</button><button class="g-prev">${t('上一步', 'Back')}</button><button class="g-next"></button></div></div>
     </div>`;
   document.body.appendChild(root);
   const ring = root.querySelector('.g-ring'), card = root.querySelector('.g-card');
@@ -90,12 +99,12 @@ function start() {
     const s = STEPS[i];
     root.querySelector('.g-icon').textContent = s.icon || String(i + 1);
     root.querySelector('.g-icon').classList.toggle('num', !s.icon);
-    root.querySelector('h3').textContent = s.title;
-    root.querySelector('p').textContent = typeof s.body === 'function' ? s.body() : s.body;
+    root.querySelector('h3').textContent = s.title();
+    root.querySelector('p').textContent = s.body();
     dots.querySelectorAll('i').forEach((d, k) => d.classList.toggle('on', k === i));
     root.querySelector('.g-prev').style.display = i ? '' : 'none';
     root.querySelector('.g-skip').style.display = i < STEPS.length - 1 ? '' : 'none';
-    root.querySelector('.g-next').textContent = i === 0 ? '开始' : i === STEPS.length - 1 ? '完成' : '下一步';
+    root.querySelector('.g-next').textContent = i === 0 ? t('开始', 'Start') : i === STEPS.length - 1 ? t('完成', 'Done') : t('下一步', 'Next');
     card.classList.remove('pop'); void card.offsetWidth; card.classList.add('pop');
     place();
   }

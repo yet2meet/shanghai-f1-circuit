@@ -3,6 +3,7 @@
 // 只用 2D canvas，不依赖 three.js，所以能在主场景下载和搭建期间先显示出来。
 import topo from 'world-atlas/land-110m.json';
 import { GP_VENUES } from './venues.js';
+import { L, t } from './i18n.js';
 
 const D2R = Math.PI / 180;
 const root = document.getElementById('splash');
@@ -83,8 +84,8 @@ resize();
 const easeIO = (x) => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
 
 function setCaption(v) {
-  elCity.textContent = v.city;
-  elGp.textContent = v.gp;
+  elCity.textContent = L(v, 'city');
+  elGp.textContent = L(v, 'gp');
   elCity.parentElement.classList.remove('pop');
   void elCity.offsetWidth;
   elCity.parentElement.classList.add('pop');
@@ -179,7 +180,7 @@ function draw(now) {
     if (v === S.last && (age < 2.2 || isHome)) {
       ctx.font = '600 13px -apple-system, "PingFang SC", "Microsoft YaHei UI", sans-serif';
       ctx.fillStyle = `rgba(255,255,255,${edge})`;
-      ctx.fillText(v.city, x + 12, y - 9);
+      ctx.fillText(L(v, 'city'), x + 12, y - 9);
     }
   }
   if (lit !== S.lit) { S.lit = lit; elCount.textContent = `${lit} / ${venues.length}`; }
@@ -207,7 +208,7 @@ window.__splash = {
   /** 加载完成：转到上海 → 放大 → 淡出。Promise 在开始淡出时兑现。 */
   finish() {
     if (done) return Promise.resolve();
-    this.progress(1, '即将抵达上海');
+    this.progress(1, t('即将抵达上海', 'Arriving in Shanghai'));
     const dLon = ((((home.lon - S.lon) % 360) + 360) % 360) || 360;
     S.lon %= 360;
     goto = { t: 0, lon0: S.lon, dLon, lat0: S.lat, dur: 1.5 + dLon / 170 };
