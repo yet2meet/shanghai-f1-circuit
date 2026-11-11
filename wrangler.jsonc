@@ -1,0 +1,9 @@
+// Cloudflare 部署配置：把构建产物 dist/ 作为纯静态网站发布（不需要服务器代码）。
+// 有了这个文件，wrangler 不会再尝试自动识别项目（自动识别要求 Vite 6+）。
+{
+  "name": "shanghai-circuit",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}
