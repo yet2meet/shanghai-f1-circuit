@@ -4,7 +4,7 @@
 // 座位直接放在世界坐标里，点选时按“射线 ∩ 座位斜面”解析出排号与座号，不必逐个检测几万个座位。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { STANDS, TURNS } from './data.js';
+import { STANDS, TURNS, TRACK_POINTS } from './data.js';
 import { OSM_STANDS } from './osm-data.js';
 import { V, rng, std, floodlit, lampMat, extrudeProfile } from './util.js';
 import { groundDetail } from './textures.js';
@@ -26,6 +26,69 @@ function frameOf(part) {
   const front = V(part.front[0], part.front[1]);
   const f = new THREE.Vector3(part.f[0], 0, -part.f[1]).normalize();
   return { front, f, rotY: Math.atan2(-f.x, -f.z) };
+}
+
+/**
+ * 弧形看台：OSM 中多于 4 个顶点的轮廓（如 B2、B3）是沿弯道弯曲的。
+ * 取轮廓中靠赛道一侧的顶点链作为前沿，按约 10 m 一段切成若干直段，每段按原有方式排座；
+ * 相邻两段之间的楔形空隙用看台剖面绕接缝竖轴旋转（lathe）填满，得到连续的弧形阶梯。
+ */
+const SEG = 10;
+function trackDist(x, n) {
+  let b = Infinity;
+  for (const [tx, tn] of TRACK_POINTS) { const d = (tx - x) ** 2 + (tn - n) ** 2; if (d < b) b = d; }
+  return Math.sqrt(b);
+}
+function curveParts(parts) {
+  const out = [];
+  parts.forEach((part, pi) => {
+    const P = part.poly, N = P.length / 2;
+    if (N <= 4) { out.push({ ...part, chain: pi }); return; }
+    const pts = [];
+    for (let i = 0; i < N; i++) pts.push([P[i * 2], P[i * 2 + 1], trackDist(P[i * 2], P[i * 2 + 1])]);
+    // 弧形带状轮廓：两端的“端头”边是相距最远的两条边；它们之间的两条长链一条是前沿、一条是后沿，离赛道近的是前沿
+    const mid = (i) => [(pts[i][0] + pts[(i + 1) % N][0]) / 2, (pts[i][1] + pts[(i + 1) % N][1]) / 2];
+    // 端头边从前沿走到后沿：沿边每米离赛道距离的变化接近 1；沿弧的边几乎为 0。取得分最高、且相距足够远的两条
+    const score = (i) => { const p = pts[i], q = pts[(i + 1) % N]; return Math.abs(p[2] - q[2]) / Math.max(1, Math.hypot(p[0] - q[0], p[1] - q[1])); };
+    let span = 0;
+    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) span = Math.max(span, Math.hypot(mid(i)[0] - mid(j)[0], mid(i)[1] - mid(j)[1]));
+    let c1 = 0, c2 = 1, best = -1;
+    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+      const d = Math.hypot(mid(i)[0] - mid(j)[0], mid(i)[1] - mid(j)[1]);
+      if (d < span * 0.6) continue;
+      const s = score(i) + score(j);
+      if (s > best) { best = s; c1 = i; c2 = j; }
+    }
+    const chainA = [], chainB = [];
+    for (let i = c1 + 1; ; i = (i + 1) % N) { chainA.push(pts[i]); if (i === c2) break; }
+    for (let i = c2 + 1; ; i = (i + 1) % N) { chainB.push(pts[i]); if (i === c1) break; }
+    const avg = (c) => c.reduce((s, p) => s + p[2], 0) / c.length;
+    const [front, back] = avg(chainA) < avg(chainB) ? [chainA, chainB] : [chainB, chainA];
+    // 前沿链沿弧长等分成若干段
+    const cum = [0];
+    for (let i = 1; i < front.length; i++) cum.push(cum[i - 1] + Math.hypot(front[i][0] - front[i - 1][0], front[i][1] - front[i - 1][1]));
+    const len = cum[cum.length - 1], n = Math.max(1, Math.round(len / SEG));
+    const at = (d) => {
+      let i = 1; while (i < cum.length - 1 && cum[i] < d) i++;
+      const t = (d - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]);
+      return [front[i - 1][0] + (front[i][0] - front[i - 1][0]) * t, front[i - 1][1] + (front[i][1] - front[i - 1][1]) * t];
+    };
+    // 进深：前沿各点到后沿折线的距离取中位数（整段一致，相邻段的台阶才能对齐）
+    const segDist = (x, y, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1; const u = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / l2)); return Math.hypot(x - a[0] - u * dx, y - a[1] - u * dy); };
+    const ds = [];
+    for (let k = 0; k <= 10; k++) { const [x, y] = at((len * k) / 10); let m = Infinity; for (let i = 1; i < back.length; i++) m = Math.min(m, segDist(x, y, back[i - 1], back[i])); ds.push(m); }
+    ds.sort((a, b) => a - b);
+    const D = Math.max(12, ds[5]);
+    for (let k = 0; k < n; k++) {
+      const a = at((len * k) / n), b = at((len * (k + 1)) / n);
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      let fx = -(b[1] - a[1]) / L, fn = (b[0] - a[0]) / L;
+      const mx = (a[0] + b[0]) / 2, mn = (a[1] + b[1]) / 2;
+      if (trackDist(mx + fx * 8, mn + fn * 8) > trackDist(mx - fx * 8, mn - fn * 8)) { fx = -fx; fn = -fn; } // 每段单独判断：朝向赛道一侧
+      out.push({ ...part, code: part.code, front: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], f: [fx, fn], L, D, chain: pi, a, b, first: k === 0, last: k === n - 1 });
+    }
+  });
+  return out;
 }
 
 /** 生成每一层的排：返回 rows[{z,y,tier,r}] 与剖面 */
@@ -62,6 +125,27 @@ function layoutRows(spec, part) {
   return { rows, tierInfo, prof, H, D, base, tiers };
 }
 
+/** 弧形看台相邻两段之间的扇形填充：看台剖面绕接缝竖轴旋转，台阶与两侧直段对齐 */
+function buildFans(spec, parts, mats) {
+  const geos = [];
+  for (let i = 1; i < parts.length; i++) {
+    const p0 = parts[i - 1], p1 = parts[i];
+    if (!p0.a || !p1.a || p0.chain !== p1.chain) continue;
+    const lay = layoutRows(spec, p1);
+    const r0 = frameOf(p0).rotY, r1 = frameOf(p1).rotY;
+    let d = r1 - r0; d = Math.atan2(Math.sin(d), Math.cos(d));
+    if (Math.abs(d) < 1e-3) continue;
+    const g = new THREE.LatheGeometry(lay.prof.map(([z, y]) => new THREE.Vector2(Math.max(0, z), y)), Math.max(2, Math.ceil(Math.abs(d) / 0.08)), d > 0 ? r0 : r1, Math.abs(d));
+    const j = p0.b; // 两段共用的前沿接缝点
+    g.translate(j[0], 0, -j[1]);
+    geos.push(g.index ? g.toNonIndexed() : g);
+  }
+  const m = new THREE.Mesh(mergeGeometries(geos), mats.concrete.clone());
+  m.material.side = THREE.DoubleSide;
+  m.castShadow = m.receiveShadow = true;
+  return m;
+}
+
 function buildSeatPart(spec, part, pi, ctx) {
   const { mats, seats, base, rot, partOf, blocks, blockMap } = ctx;
   const { front, f, rotY } = frameOf(part);
@@ -90,8 +174,9 @@ function buildSeatPart(spec, part, pi, ctx) {
     band.position.set(0, H * 0.45, D + 0.02);
     G.add(band);
   }
-  // 两端侧墙
+  // 两端侧墙（弧形看台内部的接缝处不要侧墙，由扇形填充连起来）
   for (const sx of [-1, 1]) {
+    if (part.a && ((sx < 0 && !part.first) || (sx > 0 && !part.last))) continue;
     const side = new THREE.Mesh(extrudeProfile(lay.prof, 0.35), mats.white);
     side.position.x = sx * (L / 2 + 0.17);
     side.castShadow = true;
@@ -308,8 +393,9 @@ function buildSeatStand(spec, mats, seatGeo, common) {
     rand: rng(spec.id.charCodeAt(0) * 7919),
     rails: railBatcher(mats.steel), glassPanels: [], nosing: [], carpet: [], extra: [], hitboxes: common.hitboxes, hitMat: common.hitMat, colorMat: common.colorMat,
   };
-  const parts = OSM_STANDS[spec.id];
+  const parts = spec.curve ? curveParts(OSM_STANDS[spec.id]) : OSM_STANDS[spec.id];
   parts.forEach((part, pi) => g.add(buildSeatPart(spec, part, pi, ctx)));
+  if (spec.curve) g.add(buildFans(spec, parts, mats));
   g.add(ctx.rails.build());
   ctx.extra.forEach((m) => g.add(m));
   // 栏杆玻璃面板（合并成一个网格）

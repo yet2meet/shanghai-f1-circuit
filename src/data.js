@@ -59,6 +59,7 @@ export const STANDS = [
     desc: '沿 1–3 号弯外侧环绕的三段看台，俯瞰不断收紧的复合右弯，是起步后首圈缠斗的观赛点。',
     descEn: 'Three sections wrapping around the outside of Turns 1–3, overlooking the tightening right-hander — the place to watch first-lap battles.',
     base: 1.8, height: 15, maxRows: 30,
+    curve: true, // B1 直段 + B2、B3 两段弧形，是一座沿 1–3 号弯连续环绕的看台（OSM 中 B2、B3 为弧形轮廓）
     tiers: [{ zone: 'b' }],
     zones: { b: { name: 'B', color: '#e9579a', price: 2180, day: { fri: 410, sat: 740, sun: 1890 } } },
   },
