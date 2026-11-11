@@ -1,7 +1,7 @@
 // 新手引导：第一次打开时逐步指出主要操作；右上角“?”可随时重看
 import { t, onLang } from './i18n.js';
 
-const KEY = 'sic-guide-v1';
+const KEY = 'sic-guide-v2'; // 操作方式改为自由视角后升级版本号，老用户也会再看到一次
 
 const mobile = () => innerWidth <= 860;
 const STEPS = [
@@ -9,8 +9,8 @@ const STEPS = [
     body: () => t('赛道、看台与建筑均按真实测绘数据还原。花 20 秒了解几个基本操作。', 'The track, grandstands and buildings are rebuilt from real survey data. Here are the basics in 20 seconds.') },
   { icon: '🖐', title: () => t('自由查看', 'Look around'),
     body: () => (mobile()
-      ? t('单指拖动旋转视角，双指捏合缩放，双指拖动平移。', 'Drag with one finger to rotate, pinch to zoom, drag with two fingers to pan.')
-      : t('按住左键拖动旋转，滚轮缩放，按住右键拖动平移。', 'Left-drag to rotate, scroll to zoom, right-drag to pan.')) },
+      ? t('单指拖动移动，双指捏合缩放，双指拖动旋转视角。一直放大到地面后继续放大，就能向前走，可以站在任何位置观察。', 'Drag with one finger to move, pinch to zoom, drag with two fingers to rotate. Keep zooming in at ground level to walk forward and look from anywhere.')
+      : t('按住左键拖动移动，右键拖动旋转视角，滚轮朝鼠标所指处缩放。一直放大到地面后继续滚动，就能向前走，可以站在任何位置观察。', 'Left-drag to move, right-drag to rotate, scroll to zoom towards the pointer. Keep scrolling at ground level to walk forward and look from anywhere.')) },
   { target: '#list', title: () => t('看台与票价', 'Grandstands & prices'),
     body: () => t('这里列出每个看台的位置和官方票价。点击任一看台，镜头会飞到那里，并显示看台详情。', 'Every grandstand with its location and official price. Click one to fly there and open its details.') },
   { target: '#list', title: () => t('选座与座位视角', 'Seats & seat view'),

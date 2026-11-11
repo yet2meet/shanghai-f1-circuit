@@ -15,6 +15,7 @@ import { buildCars } from './cars.js';
 import { buildOSM } from './osm.js';
 import { buildKarting } from './karting.js';
 import { initGuide } from './guide.js';
+import { buildCamLimits } from './camlimits.js';
 import { t as tr, L, onLang, isEn } from './i18n.js';
 import { buildPitBuilding } from './pitbuilding.js';
 
@@ -39,12 +40,18 @@ const camera = new THREE.PerspectiveCamera(38, 1, 1, 14000);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
+// 地图式操作：左键 / 单指拖动 = 沿地面平移；右键 / 双指拖动 = 旋转与倾斜；滚轮 / 双指捏合 = 朝指针处缩放
+const MAP_MOUSE = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+const MAP_TOUCH = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+controls.mouseButtons = { ...MAP_MOUSE };
+controls.touches = { ...MAP_TOUCH };
 controls.screenSpacePanning = false;
-controls.maxPolarAngle = 1.52;
-controls.minDistance = 6;
+controls.maxPolarAngle = 1.5;
+controls.minDistance = 0.5; // 推到 8 m 以内后继续放大会变成向前走（见 freeCam），不会卡住
 controls.maxDistance = 6500;
 controls.zoomToCursor = true;
 controls.zoomSpeed = 1.1;
+controls.panSpeed = 1.0;
 
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: MOBILE ? 2 : 4 }));
 composer.addPass(new RenderPass(scene, camera));
@@ -95,6 +102,7 @@ function updateHome() {
   // 从主看台一侧望向赛道：大直道横在近处，1 号弯在左、14 号发卡弯在右；竖屏时更接近俯视
   HOME.target.copy(env.center).add(new THREE.Vector3(portrait ? -120 : -40, 0, innerWidth > 860 ? -150 : 0));
   HOME.pos.copy(HOME.target).add(portrait ? new THREE.Vector3(-900 * k, 1850 * k, 40 * k) : new THREE.Vector3(-1680 * k, 1560 * k, 60 * k));
+  controls.maxDistance = HOME.pos.distanceTo(HOME.target) * 1.2; // 最远：比全景略远一点
 }
 updateHome();
 // 开场从正上方高空俯冲下来，衔接启动页里“放大到上海”的镜头
@@ -121,19 +129,70 @@ function flyTo(pos, target, dur = 1.6) {
   fly = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos.clone(), t1: target.clone(), t: 0, dur };
   controls.enabled = false;
 }
+// ───────────────────────── 自由视角：边界、防穿模、随缩放自动倾斜 ─────────────────────────
+const camLimits = buildCamLimits(stands);
+const _off = new THREE.Vector3(), _fwd = new THREE.Vector3(), _sph = new THREE.Spherical();
+let lastDist = 0, limitsDirty = true;
+const WALK_D = 8; // 镜头与注视点的最近距离；再放大就向前走
+controls.addEventListener('change', () => { limitsDirty = true; });
+function freeCam() {
+  if (!limitsDirty) return;              // 镜头没动就什么都不算
+  limitsDirty = false;
+  const t = controls.target, p = camera.position;
+  let d = p.distanceTo(t);
+  const collide = state.mode !== 'seats'; // 选座模式要压到顶棚下贴近座位，只限制范围与离地高度
+  const onGround = collide && p.y <= camLimits.minYAt(p.x, p.z) + 0.6 && d < 120;
+  if (lastDist && d < lastDist - 1e-3 && collide && (onGround || d < WALK_D)) {
+    // 已经贴近地面时继续放大 = 向前走：保持距离，镜头和注视点一起沿水平方向前进，视线逐渐放平
+    const step = Math.min(15, ((lastDist - d) / lastDist) * 40); // 每格滚轮约前进 2 m，与当前距离无关
+    _off.subVectors(p, t).setLength(lastDist);
+    p.copy(t).add(_off);
+    _fwd.subVectors(t, p).setY(0);
+    if (_fwd.lengthSq() > 1e-6) {
+      _fwd.normalize();
+      p.addScaledVector(_fwd, step); t.addScaledVector(_fwd, step);
+      const dy = (camLimits.minYAt(p.x, p.z) - p.y) * Math.min(1, step * 0.08); // 边走边降到人眼高度
+      p.y += dy; t.y = Math.max(0, t.y + dy);
+      _dir.subVectors(t, p).normalize();
+      const el = Math.asin(THREE.MathUtils.clamp(_dir.y, -1, 1));
+      const el2 = el + (-0.14 - el) * 0.25;  // 目标俯角约 8°，接近站立时平视
+      _dir.set(_fwd.x * Math.cos(el2), Math.sin(el2), _fwd.z * Math.cos(el2));
+      t.copy(p).addScaledVector(_dir, lastDist);
+    }
+    d = lastDist;
+  } else if (lastDist && Math.abs(Math.log(d / lastDist)) > 1e-4 && collide) {
+    // 空中缩放时顺带调整倾斜：拉远逐渐变成俯视，推近逐渐放平（只在缩放时生效，不干扰手动旋转）
+    const s = THREE.MathUtils.clamp(Math.log(d / 8) / Math.log(2400 / 8), 0, 1);
+    const want = THREE.MathUtils.lerp(1.42, 0.72, s);
+    _sph.setFromVector3(_off.subVectors(p, t));
+    _sph.phi += (want - _sph.phi) * Math.min(1, Math.abs(Math.log(d / lastDist)) * 3);
+    _sph.makeSafe();
+    p.copy(t).add(_off.setFromSpherical(_sph));
+  }
+  camLimits.apply(camera, t, { collide });
+  // 贴地时朝指针缩放会把注视点拉到脚下，改为沿视线方向前进
+  controls.zoomToCursor = !(collide && p.y <= camLimits.minYAt(p.x, p.z) + 0.6 && p.distanceTo(t) < 120);
+  camera.lookAt(t);
+  lastDist = p.distanceTo(t);
+}
+
 // ───────────────────────── 座位视角：原地环顾 ─────────────────────────
 // 相机固定在座位的视线点上，拖动只改变视线方向；滚轮 / ± 按钮改变视野角度（望远），不移动相机。
 let seatCam = null; // { eye, fov }：进入座位视角前的视野角度，退出时恢复
-const ORBIT_DEFAULTS = { minDistance: controls.minDistance, minPolarAngle: 0, maxPolarAngle: controls.maxPolarAngle, enablePan: true, enableZoom: true };
+const ORBIT_DEFAULTS = { minDistance: 0.5, minPolarAngle: 0, maxPolarAngle: controls.maxPolarAngle, enablePan: true, enableZoom: true };
 const SEAT_LOOK = 0.1; // 视线目标点离眼睛的距离（米），只用来确定朝向
 function enterSeatCam(eye) {
   seatCam = { eye: eye.clone(), fov: camera.fov };
   Object.assign(controls, { minDistance: 0.01, minPolarAngle: 0.05, maxPolarAngle: Math.PI - 0.05, enablePan: false, enableZoom: false });
+  controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: null, RIGHT: THREE.MOUSE.ROTATE };   // 座位视角：拖动 = 原地环顾
+  controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: null };
   applyViewOffset();
 }
 function exitSeatCam() {
   if (!seatCam) return;
   Object.assign(controls, ORBIT_DEFAULTS);
+  controls.mouseButtons = { ...MAP_MOUSE };
+  controls.touches = { ...MAP_TOUCH };
   camera.fov = seatCam.fov;
   camera.updateProjectionMatrix();
   seatCam = null;
@@ -308,9 +367,11 @@ const _v = new THREE.Vector3();
 function updateLabels() {
   const w = innerWidth, h = innerHeight;
   const dist = camera.position.distanceTo(controls.target);
+  const low = camera.position.y < 40; // 贴近地面时远处的标签会沿地平线挤成一排，只保留近处的
   for (const l of labels) {
     _v.copy(l.pos).project(camera);
     let show = _v.z < 1 && Math.abs(_v.x) < 1.1 && Math.abs(_v.y) < 1.1;
+    if (show && low && l.kind !== 'block') show = camera.position.distanceTo(l.pos) < (l.kind === 'stand' ? 450 : 220);
     if (l.kind === 'stand') show &&= state.mode !== 'seats' && !(state.mode === 'stand' && state.stand.spec.id === l.id);
     else if (l.kind === 'block') show &&= state.mode === 'seats' && state.stand.spec.id === l.id && camera.position.distanceTo(l.pos) < 330 && camera.position.y > l.pos.y;
     else show &&= state.mode === 'overview' ? dist < 3200 && !isMobile() : state.mode === 'stand';
@@ -416,8 +477,8 @@ function syncList() {
   mm.marks.forEach((g) => g.classList.toggle('on', state.stand?.spec.id === g.dataset.id));
   listEl.querySelectorAll('.item').forEach((el) => el.classList.toggle('active', state.stand?.spec.id === el.dataset.id));
   $('#hint').textContent = state.mode === 'seats'
-    ? tr('滚轮放大 · 点击票区或座位 · 双击进入座位视角 · Esc 返回', 'Scroll to zoom · click a zone or seat · double-click for seat view · Esc to go back')
-    : tr('拖动旋转 · 滚轮缩放 · 右键平移 · 点击看台探索', 'Drag to rotate · scroll to zoom · right-drag to pan · click a stand to explore');
+    ? tr('拖动平移 · 右键旋转 · 滚轮缩放 · 点击票区或座位 · 双击进入座位视角 · Esc 返回', 'Drag to move · right-drag to rotate · scroll to zoom · click a zone or seat · double-click for seat view · Esc to go back')
+    : tr('拖动平移 · 右键旋转 · 滚轮缩放（贴地后继续滚动 = 前进）· 点击看台探索', 'Drag to move · right-drag to rotate · scroll to zoom (keep scrolling at ground level to walk) · click a stand');
 }
 
 // ───────────────────────── 交互流程 ─────────────────────────
@@ -634,10 +695,11 @@ function tick(dt) {
     camera.position.lerpVectors(fly.p0, fly.p1, e);
     controls.target.lerpVectors(fly.t0, fly.t1, e);
     camera.lookAt(controls.target);
-    if (fly.t >= 1) { fly = null; controls.enabled = true; }
+    if (fly.t >= 1) { fly = null; controls.enabled = true; lastDist = 0; limitsDirty = true; } // 飞行结束后不触发自动倾斜
   } else {
     controls.update();
     if (seatCam) pinSeatCam();
+    else freeCam();
   }
   const dist = camera.position.distanceTo(controls.target);
   camMoved = camera.position.distanceToSquared(lastCam) > 1e-4 || controls.target.distanceToSquared(lastTgt) > 1e-4;
