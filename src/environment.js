@@ -37,7 +37,7 @@ export function buildEnvironment(scene, track, stands, renderer) {
   const rand = rng(20040926);
 
   // ── 天空 ──
-  const skyU = { top: { value: new THREE.Color() }, bottom: { value: new THREE.Color() }, ground: { value: new THREE.Color('#5f6d4c') }, sunDir: { value: new THREE.Vector3(0.4, 0.75, -0.5) }, sunColor: { value: new THREE.Color('#fff1d6') }, sunAmt: { value: 1 } };
+  const skyU = { top: { value: new THREE.Color() }, bottom: { value: new THREE.Color() }, ground: { value: new THREE.Color('#d9dce0') }, sunDir: { value: new THREE.Vector3(0.4, 0.75, -0.5) }, sunColor: { value: new THREE.Color('#fff1d6') }, sunAmt: { value: 1 } };
   const sky = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), skyMaterial(skyU));
   sky.renderOrder = -1000; sky.frustumCulled = false;
   scene.add(sky);
@@ -57,15 +57,15 @@ export function buildEnvironment(scene, track, stands, renderer) {
 
   // ── 地面 ──
   const grassTex = canvasTex(512, 512, (c, w, h) => {
-    c.fillStyle = '#4f8a40'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#eceef0'; c.fillRect(0, 0, w, h);
     for (let i = 0; i < 9000; i++) {
       const l = 30 + Math.random() * 16;
-      c.fillStyle = `hsla(${98 + Math.random() * 22},38%,${l}%,0.5)`;
+      c.fillStyle = `hsla(210,6%,${l + 50}%,0.25)`;
       c.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 3, 2 + Math.random() * 3);
     }
   }, [90, 90]);
   // 底图：OSM 未标注用途的土地在这一带基本是农田与绿地
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), new THREE.MeshStandardMaterial({ map: grassTex, color: '#a9c487', roughness: 1, depthWrite: false }));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), new THREE.MeshStandardMaterial({ map: grassTex, color: '#dfe2e6', roughness: 1, depthWrite: false }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   ground.renderOrder = -10;
@@ -132,7 +132,7 @@ export function buildEnvironment(scene, track, stands, renderer) {
     envScene.add(new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), skyMaterial(u)));
     const bake = (k) => {
       u.top.value.lerpColors(DAY.top, NIGHT.top, k); u.bottom.value.lerpColors(DAY.bottom, NIGHT.bottom, k);
-      u.ground.value.set(k ? '#0b0d10' : '#5f6d4c'); u.sunDir.value.copy(DAY.sunPos).normalize(); u.sunAmt.value = k ? 0 : 1;
+      u.ground.value.set(k ? '#0b0d10' : '#d9dce0'); u.sunDir.value.copy(DAY.sunPos).normalize(); u.sunAmt.value = k ? 0 : 1;
       return pmrem.fromScene(envScene, 0.02).texture;
     };
     env.envDay = bake(0); env.envNight = bake(1);
@@ -169,7 +169,7 @@ export function applyTime(env, scene, t) {
   env.sun.position.copy(env.sun.target.position).addScaledVector(env.sunDir, 2000);
   env.skyU.sunDir.value.copy(env.sunDir);
   env.skyU.sunAmt.value = 1 - THREE.MathUtils.smoothstep(t, 0.2, 0.6);
-  env.skyU.ground.value.lerpColors(C('#5f6d4c'), C('#07090c'), t);
+  env.skyU.ground.value.lerpColors(C('#d9dce0'), C('#07090c'), t);
   if (env.envDay) { scene.environment = t < 0.5 ? env.envDay : env.envNight; scene.environmentIntensity = THREE.MathUtils.lerp(0.75, 0.25, t); }
   env.hemi.color.lerpColors(DAY.hemiSky, NIGHT.hemiSky, t);
   env.hemi.groundColor.lerpColors(DAY.hemiGround, NIGHT.hemiGround, t);

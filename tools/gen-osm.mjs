@@ -152,9 +152,13 @@ for (const id of [107371135, 1372223261, 1372223262]) usedForStands.add('way' + 
 // ── 场馆红线：OSM 中“上海国际赛车场”（leisure=sports_centre）的边界 ──
 // 只保留红线以内（外扩 30 m）的地物，红线外统一铺成平整草地
 const VENUE = open(proj(elements.get('way156311798').geometry));
+// 南侧圆形广场（地铁站、1 号门入口）不在 OSM 红线内，单独圈入：中心 (-891, 79)，半径 260 m
+const PLAZA = [-891, 79], PLAZA_R = 260;
+const inPlaza = ([x, n]) => Math.hypot(x - PLAZA[0], n - PLAZA[1]) < PLAZA_R;
+const inKeep = (p) => pip(p, VENUE) || inPlaza(p);
 const nearVenue = (pts) => {
   const [cx, cn] = centroid(pts);
-  if (pip([cx, cn], VENUE)) return true;
+  if (inKeep([cx, cn])) return true;
   return segDist([cx, cn], [...VENUE, VENUE[0]]) < 30;
 };
 
@@ -247,7 +251,7 @@ for (const e of elements.values()) {
   const g = proj(e.geometry);
   if (!inRange(g)) continue;
   // 线状地物：只保留落在红线内的部分（按点裁剪，避免高速公路等穿出红线）
-  const inside = g.filter((p) => pip(p, VENUE));
+  const inside = g.filter(inKeep);
   if (inside.length < 2 || k === 'rail' || k === 'road:motorway' || k === 'road:motorway_link') continue;
   lines.push({ k, w: r1(w), y, p: flat(inside) });
 }

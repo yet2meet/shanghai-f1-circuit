@@ -150,8 +150,8 @@ export function buildOSM(scene) {
   // ── 地块 ──
   const AREA = {
     farmland: ['#7f9b55', -9], residential: ['#c7c3b8', -8], industrial: ['#bdb8ae', -8], retail: ['#cbc1b2', -8], cemetery: ['#8ca576', -8],
-    park: ['#6aa951', -7], grass: ['#74b058', -7], forest: ['#3f7a3a', -7], flowerbed: ['#8cc160', -6], pitch: ['#4e9a49', -6], trackfield: ['#b4533c', -6],
-    parking: ['#73777e', -5], plaza: ['#d6d1c5', -5], paved: ['#c8c8c2', -5], gravel: ['#c9b48b', -5], sand: ['#e2d3a6', -5], water: ['#3d84ab', -4],
+    park: ['#cbd3ca', -7], grass: ['#cbd3ca', -7], forest: ['#bcc6bb', -7], flowerbed: ['#c3ccc2', -6], pitch: ['#c0c9bf', -6], trackfield: ['#d9c9c2', -6],
+    parking: ['#c6cad0', -5], plaza: ['#eef0f2', -5], paved: ['#d9dce0', -5], gravel: ['#dcd8d0', -5], sand: ['#e6e1d6', -5], water: ['#8fadc1', -4],
   };
   const byKind = {};
   for (const a of OSM_AREAS) {
@@ -180,10 +180,10 @@ export function buildOSM(scene) {
       }
     }
   }
-  const waterMat = floodlit(new THREE.MeshStandardMaterial({ color: AREA.water[0], roughness: 0.12, metalness: 0.35 }), 0.12);
+  const waterMat = floodlit(new THREE.MeshStandardMaterial({ color: AREA.water[0], roughness: 0.18, metalness: 0.25 }), 0.08);
   waterMat.depthWrite = false;
   for (const [k, list] of Object.entries(byKind)) {
-    const mat = k === 'water' ? waterMat : groundMat(AREA[k][0], k === 'parking' || k === 'plaza' || k === 'paved' ? 0.4 : 0.15);
+    const mat = k === 'water' ? waterMat : groundMat(AREA[k][0], 0.08);
     const m = new THREE.Mesh(mergeGeometries(list), mat);
     m.position.y = 0.02;
     root.add(asGround(m, AREA[k][1]));
@@ -191,9 +191,9 @@ export function buildOSM(scene) {
 
   // ── 线状地物 ──
   const ROAD = {
-    motorway: '#5a5e65', motorway_link: '#5a5e65', primary: '#5f636a', primary_link: '#5f636a', secondary: '#62666d', secondary_link: '#62666d',
-    tertiary: '#666a71', tertiary_link: '#666a71', unclassified: '#6b6f76', residential: '#6b6f76', service: '#71757c', living_street: '#6b6f76',
-    track: '#a4977a', footway: '#cbc4b6', path: '#c2b79f', steps: '#bdb6a8', pedestrian: '#d2ccbf', cycleway: '#b9705c',
+    motorway: '#9aa0a8', motorway_link: '#9aa0a8', primary: '#9ea4ac', primary_link: '#9ea4ac', secondary: '#a2a8b0', secondary_link: '#a2a8b0',
+    tertiary: '#a6acb3', tertiary_link: '#a6acb3', unclassified: '#aab0b7', residential: '#aab0b7', service: '#afb4bb', living_street: '#aab0b7',
+    track: '#c2c0b9', footway: '#c9ccd1', path: '#c8c8c3', steps: '#c4c7cc', pedestrian: '#d3d5d9', cycleway: '#c2c5ca',
   };
   const ground = {}, raised = {};
   const dash = [], edge = [];
@@ -253,7 +253,7 @@ export function buildOSM(scene) {
     return m;
   };
   add(waterLines, waterMat, -4);
-  for (const [cls, list] of Object.entries(ground)) add(list, groundMat(ROAD[cls] || '#6b6f76', 0.35), /footway|path|steps|pedestrian|cycleway|track/.test(cls) ? -3.5 : -3);
+  for (const [cls, list] of Object.entries(ground)) add(list, groundMat(ROAD[cls] || '#c4c7cc', 0.1), /footway|path|steps|pedestrian|cycleway|track/.test(cls) ? -3.5 : -3);
   const dashTex = canvasTex(64, 8, (c, w, h) => { c.clearRect(0, 0, w, h); c.fillStyle = '#fff'; c.fillRect(0, 0, w * 0.5, h); }, [1, 1]);
   const dashMat = new THREE.MeshStandardMaterial({ map: dashTex, transparent: true, alphaTest: 0.5 });
   dashMat.depthWrite = false;
@@ -395,7 +395,7 @@ export function buildOSM(scene) {
       const h = (6 + rand() * 6) * k, w = (2.2 + rand() * 1.8) * k;
       trunk.setMatrixAt(i, m4.compose(p.set(x, h * 0.25, -n), q.identity(), s.set(1, h * 0.5, 1)));
       crown.setMatrixAt(i, m4.compose(p.set(x, h * 0.66, -n), q.setFromAxisAngle(UP, rand() * 6), s.set(w, h * 0.42, w)));
-      crown.setColorAt(i, c.setHSL(0.25 + rand() * 0.08, 0.42 + rand() * 0.2, 0.17 + rand() * 0.1));
+      crown.setColorAt(i, c.setHSL(0.3, 0.08 + rand() * 0.06, 0.66 + rand() * 0.1)); // 白模风格：低饱和浅灰绿
     }
     trunk.castShadow = crown.castShadow = true;
     root.add(trunk, crown);

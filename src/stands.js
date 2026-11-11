@@ -420,7 +420,7 @@ export function buildStands(scene) {
     seat: floodlit(new THREE.MeshStandardMaterial({ roughness: 0.55 }), 0.58),
     nosing: std('#f5c518', { roughness: 0.6 }, 0.7),
     carpet: floodlit(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide }), 0.58),
-    grass: std('#5fa64a', { roughness: 1 }, 0.5),
+    grass: std('#cfd8cf', { roughness: 1 }, 0.25),
     people: floodlit(new THREE.MeshStandardMaterial({ roughness: 0.8 }), 0.8),
   };
   const colorCache = new Map();

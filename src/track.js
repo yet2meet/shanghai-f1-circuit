@@ -73,17 +73,17 @@ export function buildTrack(scene) {
 
   // 修剪草坪带（夜间被灯光照亮）
   const vergeTex = canvasTex(256, 64, (c, w, h) => {
-    c.fillStyle = '#5e9e4b'; c.fillRect(0, 0, w, h);
-    c.fillStyle = '#69aa55'; c.fillRect(0, 0, w / 2, h);
+    c.fillStyle = '#c6cec6'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#ced5ce'; c.fillRect(0, 0, w / 2, h);
   }, [1, 1]);
   const verge = new THREE.Mesh(
     ribbon(path, { offA: (i) => HW + 13 + gwL[i], offB: (i) => -(HW + 13 + gwR[i]), y: 0.05, uv: 24 }),
-    floodlit(new THREE.MeshStandardMaterial({ map: vergeTex, roughness: 1 }), 0.5)
+    floodlit(new THREE.MeshStandardMaterial({ map: vergeTex, roughness: 1 }), 0.25)
   );
   g.add(asGround(verge, -1.5));
 
   // 砂石缓冲区
-  const gravelMat = std('#d6c39a', { roughness: 1 }, 0.55);
+  const gravelMat = std('#ddd8cd', { roughness: 1 }, 0.3);
   const gravelL = new THREE.Mesh(ribbon(path, { offA: (i) => HW + 3.5 + gwL[i], offB: HW + 3.5, y: 0.1 }), gravelMat);
   const gravelR = new THREE.Mesh(ribbon(path, { offA: -(HW + 3.5), offB: (i) => -(HW + 3.5 + gwR[i]), y: 0.1 }), gravelMat);
   g.add(asGround(gravelL, -1.4), asGround(gravelR, -1.4));
