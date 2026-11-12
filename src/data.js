@@ -92,6 +92,8 @@ export const STANDS = [
     desc: '2026 赛季再度开放，沿 11–13 号弯外侧排开的一组小看台，可以看到赛车切入 11 号弯、沿 12–13 号长右弯加速驶上长直道。购买 E 看台门票可享受免费接驳。',
     descEn: 'Reopened for 2026: a row of small stands outside Turns 11–13, watching cars turn into 11 and accelerate through the long 12–13 right-hander onto the back straight. E tickets include a free shuttle.',
     base: 1.2, height: 7.5,
+    // 2026 年升级改造后“可容纳 4000 余名观众”（上海市国资委 2026-03-13 通稿），OSM 轮廓排满会多出一倍多，按此限制排数
+    maxRows: 7, // 7 排 ≈ 4300 座
     tiers: [{ zone: 'e' }],
     zones: { e: { name: 'E', color: '#e3dc3d', price: 1580, day: null, note: '仅售三日票', noteEn: '3-day pass only' } },
   },

@@ -39,14 +39,21 @@ export function buildTrack(scene) {
   // 维修区一侧：离真实维修通道 24 m 以内的右侧不设护墙（维修墙由 venue.js 单独生成）
   const pitPts = OSM_PIT.map(([x, n]) => [x, -n]);
   const nearPit = new Uint8Array(N);
-  for (let k = 0; k < N; k++) {
-    const P = pts[k];
+  const kerbPit = new Uint8Array(N); // 右侧路肩会压到维修通道路面（维修区出口并线段）
+  const _pitD = (x, z) => {
+    let bd = Infinity;
     for (let m = 0; m < pitPts.length - 1; m++) {
       const [ax, az] = pitPts[m], [bx, bz] = pitPts[m + 1];
       const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
-      const tt = Math.max(0, Math.min(1, ((P.x - ax) * dx + (P.z - az) * dz) / l2));
-      if (Math.hypot(P.x - ax - dx * tt, P.z - az - dz * tt) < 24) { nearPit[k] = 1; break; }
+      const tt = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+      bd = Math.min(bd, Math.hypot(x - ax - dx * tt, z - az - dz * tt));
     }
+    return bd;
+  };
+  for (let k = 0; k < N; k++) {
+    const P = pts[k], n = path.nor[k];
+    if (_pitD(P.x, P.z) < 24) nearPit[k] = 1;
+    if (_pitD(P.x - n.x * (HW + 1), P.z - n.z * (HW + 1)) < 7.5) kerbPit[k] = 1;
   }
   const pitZone = (k) => nearPit[k] === 1;
 
@@ -114,10 +121,14 @@ export function buildTrack(scene) {
   g.add(asGround(new THREE.Mesh(ribbon(path, { offA: HW - 0.35, offB: HW - 0.8, y: 0.2 }), lineMat), -1.05));
   g.add(asGround(new THREE.Mesh(ribbon(path, { offA: -(HW - 0.8), offB: -(HW - 0.35), y: 0.2 }), lineMat), -1.05));
 
-  // 红白路肩
-  const kerbTex = canvasTex(64, 8, (c, w, h) => {
-    c.fillStyle = '#f5f5f5'; c.fillRect(0, 0, w, h);
-    c.fillStyle = '#d92b2b'; c.fillRect(0, 0, w / 2, h);
+  // 红白路肩。2026 年赛道专项升级“降低路肩高度”（适配 FIA ECAT），这里贴近路面，只比沥青高约 2 cm；
+  // 维修区出口并线段的内侧不画路肩，只留白色分隔线。
+  const kerbTex = canvasTex(128, 16, (c, w, h) => {
+    c.fillStyle = '#f2f2f0'; c.fillRect(0, 0, w, h);
+    c.fillStyle = '#d42a2a'; c.fillRect(0, 0, w / 2, h);
+    // 胎痕与磨损
+    for (let i = 0; i < 260; i++) { c.fillStyle = `rgba(20,20,22,${Math.random() * 0.12})`; c.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 6, 1); }
+    c.fillStyle = 'rgba(0,0,0,0.18)'; c.fillRect(0, 0, w, 1.5); c.fillRect(0, h - 1.5, w, 1.5);
   }, [1, 1]);
   const kerbMat = floodlit(new THREE.MeshStandardMaterial({ map: kerbTex, roughness: 0.7 }), 0.9);
   const isKerb = (i) => Math.abs(curv[i]) > 0.005;
@@ -128,8 +139,15 @@ export function buildTrack(scene) {
     let e = k;
     while (isKerb((e + 1) % N) && e - k < N) e++;
     const a = Math.max(k - 4, start), b = e + 4;
-    g.add(asGround(new THREE.Mesh(ribbon(path, { offA: HW + 2.2, offB: HW - 0.2, y: 0.22, uv: 5, from: a, to: b }), kerbMat), -1.0));
-    g.add(asGround(new THREE.Mesh(ribbon(path, { offA: -(HW - 0.2), offB: -(HW + 2.2), y: 0.22, uv: 5, from: a, to: b }), kerbMat), -1.0));
+    g.add(asGround(new THREE.Mesh(ribbon(path, { offA: HW + 2.2, offB: HW - 0.2, y: 0.18, uv: 5, from: a, to: b }), kerbMat), -1.0));
+    // 右侧：跳过与维修通道重叠的部分
+    for (let s0 = a; s0 <= b; s0++) {
+      if (kerbPit[s0 % N]) continue;
+      let s1 = s0;
+      while (s1 < b && !kerbPit[(s1 + 1) % N]) s1++;
+      if (s1 > s0) g.add(asGround(new THREE.Mesh(ribbon(path, { offA: -(HW - 0.2), offB: -(HW + 2.2), y: 0.18, uv: 5, from: s0, to: s1 }), kerbMat), -1.0));
+      s0 = s1;
+    }
     k = e;
   }
 

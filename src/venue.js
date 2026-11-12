@@ -193,6 +193,54 @@ export function buildVenue(scene, track, pitb) {
   hut.castShadow = true;
   g.add(hut, hutRoof);
 
+  // ── 数字旗号灯板：每个裁判岗前的护墙上一块 LED 点阵板，朝向来车（平时不亮）──
+  const ledTex = canvasTex(64, 48, (cx, w, h) => {
+    cx.fillStyle = '#08090b'; cx.fillRect(0, 0, w, h);
+    cx.fillStyle = '#23262b';
+    for (let y = 3; y < h; y += 4) for (let x = 3; x < w; x += 4) { cx.beginPath(); cx.arc(x, y, 1.2, 0, 7); cx.fill(); }
+  });
+  const nP = posts.length / 3;
+  const panelBox = new THREE.InstancedMesh(new THREE.BoxGeometry(1.36, 1.06, 0.16), dark, nP);
+  const panelFace = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.2, 0.9).translate(0, 0, 0.085), new THREE.MeshStandardMaterial({ map: ledTex, roughness: 0.35 }), nP);
+  const panelLeg = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, 1.2, 0.1).translate(0, -1.0, 0), steel, nP);
+  let pk = 0;
+  for (let i = 20; i < track.N; i += 56) {
+    const side = track.curv[i] > 0 ? -1 : 1;
+    if (side < 0 && track.pitZone(i)) continue;
+    const j = (i - 12 + track.N) % track.N; // 略靠前，让来车先看到
+    const off = (HW + 5.7 + (side > 0 ? track.gwL[j] : track.gwR[j])) * side;
+    const pt = track.pts[j], tg = track.tan[j], nr = track.nor[j];
+    q.setFromAxisAngle(UP, Math.atan2(tg.x, tg.z) + Math.PI - side * 0.35); // 面向来车，略转向赛道
+    m4.compose(p.set(pt.x + nr.x * off, 2.4, pt.z + nr.z * off), q, s.set(1, 1, 1));
+    panelBox.setMatrixAt(pk, m4); panelFace.setMatrixAt(pk, m4); panelLeg.setMatrixAt(pk, m4);
+    pk++;
+  }
+  panelBox.count = panelFace.count = panelLeg.count = pk;
+  panelBox.castShadow = true;
+  g.add(panelBox, panelFace, panelLeg);
+
+  // ── 维修区出口信号灯：快车道末端（维修墙尽头）一组红 / 绿灯，绿灯亮表示可以出站 ──
+  {
+    const k = Math.min(i1 + 2, N - 1);
+    const pt = pit.pts[k], t = pit.tan[k], nr = pit.nor[k];
+    const pe = new THREE.Group();
+    pe.position.copy(pt).addScaledVector(nr, 6.3).setY(0);
+    pe.rotation.y = Math.atan2(t.x, t.z) + Math.PI; // 面向驶来的赛车
+    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.6, 0.14), steel); pole.position.y = 1.3;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.2, 0.3), dark); head.position.y = 3.1;
+    const redOff = new THREE.Mesh(new THREE.CircleGeometry(0.2, 20), new THREE.MeshStandardMaterial({ color: '#3a0d0d', roughness: 0.3 }));
+    const greenOn = new THREE.Mesh(new THREE.CircleGeometry(0.2, 20), new THREE.MeshStandardMaterial({ color: '#0a3', emissive: '#22ff66', emissiveIntensity: 2.2 }));
+    redOff.position.set(0, 3.38, 0.16); greenOn.position.set(0, 2.84, 0.16);
+    const lbl = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.36), floodlit(new THREE.MeshStandardMaterial({ map: canvasTex(256, 64, (cx, w, h) => {
+      cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, w, h);
+      cx.fillStyle = '#111'; cx.font = 'bold 40px Arial, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('PIT EXIT', w / 2, h / 2 + 2);
+    }) }), 0.9));
+    lbl.position.set(0, 4.0, 0.02);
+    pe.add(pole, head, redOff, greenOn, lbl);
+    pe.traverse((o) => { o.castShadow = true; });
+    g.add(pe);
+  }
+
   // ── 刹车距离牌：1、6、11、14 号弯前 300 / 200 / 100 m，立在弯道外侧 ──
   const boardMats = ['300', '200', '100'].map((t) => floodlit(new THREE.MeshStandardMaterial({ map: numberTex(t, '#0b3d91', '#ffffff'), roughness: 0.5 }), 0.9));
   for (const tn of [1, 6, 11, 14]) {
