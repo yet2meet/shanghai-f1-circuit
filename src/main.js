@@ -761,7 +761,7 @@ flyTo(HOME.pos, HOME.target, 2.8); // 开场镜头
 syncList(); // 按当前语言写入底部提示语（HTML 里的是中文占位）
 initGuide(); // 第一次打开时的新手引导
 initAbout(); // 署名与免责声明
-initShare(toast); // 分享按钮
+initShare(toast, () => { composer.render(); return renderer.domElement; }); // 分享按钮：海报取当前画面
 initDrawers(); // 看台列表与赛道信息：平时收起
 // 卫星底图开关：第一次打开时才下载影像
 {
