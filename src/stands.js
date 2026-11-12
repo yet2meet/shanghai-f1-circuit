@@ -621,7 +621,7 @@ function buildSeatStand(spec, mats, seatGeo, common) {
     vomBox: [], vomHole: [], vomFloor: [],
     colorMat2: (c) => { const m = common.colorMat(c); if (!m.userData.ds) { const k = m.clone(); k.side = THREE.DoubleSide; k.onBeforeCompile = m.onBeforeCompile; k.customProgramCacheKey = m.customProgramCacheKey; m.userData.ds = k; } return m.userData.ds; },
   };
-  const parts = OSM_STANDS[spec.id];
+  const parts = outlineOf(spec);
   if (spec.arcJoin) g.add(buildArcPart(spec, chainFront(parts), ctx)); // 一串小方块排成的弧：整条做成一道连续弧形看台
   else for (const part of parts) g.add(spec.curve && isArc(part) ? buildArcPart(spec, arcFront(part), ctx) : buildSeatPart(spec, part, ctx.partOf.length, ctx));
   g.add(ctx.rails.build());
@@ -854,9 +854,12 @@ function addGrassFans(g, part, spec) {
   }
 }
 
+/** 看台轮廓：OSM 中有的直接用；没有的（C 草地）用 data.js 里按卫星影像描出的轮廓 */
+const outlineOf = (spec) => (spec.outline ? [spec.outline] : OSM_STANDS[spec.id]);
+
 function buildGrass(spec, mats, common) {
   const g = new THREE.Group();
-  const part = OSM_STANDS[spec.id][0];
+  const part = outlineOf(spec)[0];
   const { f, rotY } = frameOf(part);
   const geo = new THREE.ExtrudeGeometry(polyShape(part.poly), { depth: 0.6, bevelEnabled: true, bevelThickness: 0.9, bevelSize: 2.5, bevelSegments: 3, curveSegments: 4 });
   geo.rotateX(-Math.PI / 2);
@@ -934,7 +937,7 @@ function buildMarker(spec, common) {
 
 function buildClub(spec, common) {
   const g = new THREE.Group();
-  const part = OSM_STANDS[spec.id][0];
+  const part = outlineOf(spec)[0];
   const { f, rotY } = frameOf(part);
   const c0 = V(part.front[0], part.front[1]).addScaledVector(f, -part.D / 2);
   const hb = new THREE.Mesh(new THREE.BoxGeometry(part.L, 18, part.D), common.hitMat);
@@ -975,7 +978,7 @@ export function buildStands(scene) {
   const seatGeo = seatGeometry();
   const out = [];
   for (const spec of STANDS) {
-    if (!OSM_STANDS[spec.id] && !spec.approx) { console.warn('看台缺少 OSM 轮廓：', spec.id); continue; }
+    if (!outlineOf(spec) && !spec.approx) { console.warn('看台缺少 OSM 轮廓：', spec.id); continue; }
     const s = spec.approx ? buildMarker(spec, common) : spec.type === 'seats' ? buildSeatStand(spec, mats, seatGeo, common) : spec.type === 'grass' ? buildGrass(spec, mats, common) : buildClub(spec, common);
     s.spec = spec;
     scene.add(s.g);
