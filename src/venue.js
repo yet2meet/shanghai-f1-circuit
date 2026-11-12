@@ -2,12 +2,15 @@
 // 发车线与发车格、发车灯架、裁判岗亭、刹车距离牌。
 // 建筑本体（维修楼、主看台顶棚、“翼”形结构、围场行宫等）由 osm.js 按 OSM 真实轮廓生成。
 import * as THREE from 'three';
-import { TEAMS, TURNS } from './data.js';
+import { TEAMS, TURNS, TRACK_POINTS } from './data.js';
 import { OSM_PIT, OSM_STANDS, OSM_BUILDINGS } from './osm-data.js';
 import { V, std, lampMat, makePath, ribbon, wall, canvasTex, floodlit } from './util.js';
 import { asGround } from './osm.js';
 import { HW } from './track.js';
 import { groundDetail } from './textures.js';
+import { screenAtlas, screenGeo } from './pitscreens.js';
+import { crewGeo } from './garagekit.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 // 发车点：按 2026 官方座位图量取 —— 位于主看台中段偏 16 号弯一侧，约在看台全长距 1 号弯一端 62% 处
@@ -78,11 +81,56 @@ export function buildVenue(scene, track, pitb) {
   g.add(pw);
   g.add(new THREE.Mesh(wall(pit, { off: 6.6, h: 3.4, y: 1.25, from: i0, to: i1 }), new THREE.MeshStandardMaterial({ color: '#b8c0cc', transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false })));
   // 车队指挥台（沿维修墙一字排开，带遮阳顶）
+  // 局部坐标：x 指向维修墙 / 赛道（工程师面朝 +x 坐），z 沿维修通道，y 向上
   const nStand = TEAMS.length;
-  const standGeo = new THREE.BoxGeometry(2.0, 2.4, 6.5).translate(0, 1.2, 0);
-  const roofGeo = new THREE.BoxGeometry(3.2, 0.25, 7.2).translate(0, 3.4, 0);
-  const pws = new THREE.InstancedMesh(standGeo, dark, nStand);
-  const pwr = new THREE.InstancedMesh(roofGeo, floodlit(new THREE.MeshStandardMaterial({ roughness: 0.5 }), 0.8), nStand);
+  const B = (w, h, d, x, y, z) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
+  const kit = { dark: [], team: [], metal: [], seat: [], screen: [], glass: [] };
+  kit.dark.push(
+    B(2.4, 1.0, 7.0, 0, 0.5, 0),          // 抬高的平台
+    B(0.75, 0.07, 6.7, 0.78, 1.93, 0),    // 长条工作台
+    B(0.06, 0.95, 6.7, 1.14, 1.45, 0),    // 工作台前挡板
+    B(0.1, 0.3, 7.0, -1.15, 1.15, 0),     // 后侧踢脚
+  );
+  kit.team.push(
+    B(3.1, 0.14, 7.5, 0.25, 3.5, 0),      // 遮阳顶（队色）
+    B(0.08, 0.5, 7.5, 1.78, 3.3, 0),      // 顶棚前沿檐板
+    B(2.42, 0.14, 7.02, 0, 0.93, 0),      // 平台边沿队色条
+    B(0.06, 0.25, 7.0, -1.2, 1.15, 0),    // 后侧护栏下的队色踢脚板（后面敞开，从维修通道能看到工程师的座椅）
+  );
+  kit.metal.push(B(0.04, 0.04, 7.0, -1.2, 1.75, 0)); // 后侧中间横杆
+  for (let i = 0; i <= 6; i++) kit.metal.push(B(0.05, 1.45, 0.05, -1.2, 1.72, -3.4 + i * (6.8 / 6))); // 护栏立杆
+  // 顶棚立柱、后侧扶手、上平台的小楼梯
+  for (const z of [-3.45, 3.45]) for (const x of [-1.15, 1.2]) kit.metal.push(B(0.07, 2.5, 0.07, x, 2.25, z));
+  kit.metal.push(B(0.05, 0.05, 7.0, -1.2, 2.45, 0));
+  for (let s = 0; s < 3; s++) kit.metal.push(B(0.9, 0.08, 0.32, -0.5, 0.25 + s * 0.25, 3.65 + (2 - s) * 0.3));
+  // 6 个工位：高脚椅 + 每人两块显示屏（屏面朝工程师），顶棚下再挂一排计时屏
+  const scr = (cell, w, h, x, y, z) => { const g = screenGeo(cell, w, h); g.rotateY(-Math.PI / 2); g.translate(x, y, z); return g; };
+  for (let i = 0; i < 6; i++) {
+    const zc = -2.75 + i * 1.1;
+    kit.seat.push(B(0.42, 0.07, 0.42, 0.2, 1.62, zc), B(0.06, 0.5, 0.4, -0.02, 1.9, zc));     // 座面、靠背
+    kit.metal.push(B(0.05, 0.62, 0.05, 0.2, 1.3, zc), B(0.36, 0.04, 0.04, 0.2, 1.22, zc));    // 立杆、脚踏
+    for (const dz of [-0.26, 0.26]) {
+      kit.screen.push(scr((i * 2 + (dz > 0 ? 1 : 0)) % 4, 0.48, 0.3, 0.98, 2.22, zc + dz));
+      kit.dark.push(B(0.04, 0.34, 0.52, 1.0, 2.22, zc + dz), B(0.04, 0.22, 0.04, 1.02, 2.0, zc + dz));
+    }
+  }
+  for (let i = 0; i < 3; i++) {
+    const zc = -2.2 + i * 2.2;
+    kit.screen.push(scr((i + 1) % 4, 0.9, 0.54, 1.15, 3.05, zc));
+    kit.dark.push(B(0.06, 0.6, 0.96, 1.18, 3.05, zc), B(0.04, 0.35, 0.04, 1.2, 3.3, zc));
+  }
+  kit.glass.push(B(0.03, 0.55, 6.9, 1.17, 2.25, 0)); // 工作台前的透明防护板
+  const geo = (list) => mergeGeometries(list.map((x) => (x.index ? x.toNonIndexed() : x)));
+  const teleTex = screenAtlas(TEAMS, TRACK_POINTS);
+  const pws = new THREE.InstancedMesh(geo(kit.dark), dark, nStand);
+  const pwr = new THREE.InstancedMesh(geo(kit.team), floodlit(new THREE.MeshStandardMaterial({ roughness: 0.5 }), 0.8), nStand);
+  const pwExtra = [
+    new THREE.InstancedMesh(geo(kit.metal), steel, nStand),
+    new THREE.InstancedMesh(geo(kit.seat), std('#1b1c20', { roughness: 0.7 }, 0.2), nStand),
+    new THREE.InstancedMesh(geo(kit.screen), new THREE.MeshStandardMaterial({ map: teleTex, emissive: '#ffffff', emissiveMap: teleTex, emissiveIntensity: 0.5, roughness: 0.35 }), nStand),
+    new THREE.InstancedMesh(geo(kit.glass), new THREE.MeshStandardMaterial({ color: '#cfe3f2', transparent: true, opacity: 0.22, roughness: 0.05, depthWrite: false }), nStand),
+  ];
+  const standAt = []; // 每座指挥台的世界矩阵与对应的维修通道采样点
   for (let k = 0; k < nStand; k++) {
     const gpos = pitb.toWorld(pitb.bayX(k * 3 + 1), 0); // 该队中间车库正对的位置
     let idx = 0, bd = Infinity;
@@ -91,10 +139,61 @@ export function buildVenue(scene, track, pitb) {
     q.setFromAxisAngle(UP, Math.atan2(t.x, t.z));
     m4.compose(p.copy(pt).addScaledVector(nr, 5.2), q, s.set(1, 1, 1));
     pws.setMatrixAt(k, m4); pwr.setMatrixAt(k, m4);
+    for (const im of pwExtra) im.setMatrixAt(k, m4);
+    standAt.push({ m: m4.clone(), idx });
     pwr.setColorAt(k, c.set(TEAMS[k].color));
   }
-  pws.castShadow = true;
-  g.add(pws, pwr);
+  pws.castShadow = pwr.castShadow = true;
+  pwExtra[0].castShadow = pwExtra[1].castShadow = true;
+  g.add(pws, pwr, ...pwExtra);
+
+  // ── 维修区人员：部分指挥台坐着工程师；车库门外的工作道上站着 / 弯腰忙碌的技师 ──
+  // 人物模型与车库里同一套（面朝 +z，脚底 y = 0），队服按队色、皮肤色随机
+  const crewShirtMat = floodlit(new THREE.MeshStandardMaterial({ roughness: 0.85 }), 0.4);
+  const crewRestMat = floodlit(new THREE.MeshStandardMaterial({ roughness: 0.75, vertexColors: true }), 0.3);
+  const SKINS = ['#f3d2b4', '#e8bc96', '#d29f78', '#a8714d', '#7a4e33'];
+  const crewList = { stand: [], work: [], sit: [] };
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const pq = new THREE.Quaternion(), ps = new THREE.Vector3(), pp = new THREE.Vector3();
+  const addCrew = (pose, M, color, h = 0.94 + rnd() * 0.1) => crewList[pose].push({ m: M.clone().multiply(new THREE.Matrix4().makeScale(h, h, h)), color });
+  // 指挥台：隔几队坐 3–5 位工程师，面朝赛道（局部 +x）
+  standAt.forEach(({ m }, k) => {
+    if (k % 2 === 1 && k !== 3) return;
+    const seatsTaken = [0, 1, 2, 3, 4, 5].filter(() => rnd() < 0.7);
+    for (const i of seatsTaken) {
+      const local = new THREE.Matrix4().compose(pp.set(0.22, 1.1, -2.75 + i * 1.1), pq.setFromAxisAngle(UP, Math.PI / 2), ps.set(1, 1, 1));
+      addCrew('sit', m.clone().multiply(local), TEAMS[k].color, 1);
+    }
+  });
+  // 维修通道工作道：每队门口 2–4 人，朝向随机；偶尔一人站在指挥台后面
+  standAt.forEach(({ idx }, k) => {
+    const n = 2 + Math.floor(rnd() * 3);
+    for (let j = 0; j < n; j++) {
+      const i2 = Math.min(N - 1, Math.max(0, idx + Math.round((rnd() - 0.5) * 8)));
+      const pt = pit.pts[i2], nr = pit.nor[i2];
+      const off = (toGarage[i2] !== null ? -toGarage[i2] : -6) + 1.2 + rnd() * 3.5;
+      const M = new THREE.Matrix4().compose(pp.copy(pt).addScaledVector(nr, off).setY(0.14), pq.setFromAxisAngle(UP, rnd() * Math.PI * 2), ps.set(1, 1, 1));
+      addCrew(rnd() < 0.3 ? 'work' : 'stand', M, TEAMS[k].color);
+    }
+    if (rnd() < 0.5) {
+      const pt = pit.pts[idx], nr = pit.nor[idx], t = pit.tan[idx];
+      const M = new THREE.Matrix4().compose(pp.copy(pt).addScaledVector(nr, 3.4).addScaledVector(t, (rnd() - 0.5) * 4).setY(0.14), pq.setFromAxisAngle(UP, Math.atan2(nr.x, nr.z)), ps.set(1, 1, 1));
+      addCrew('stand', M, TEAMS[k].color);
+    }
+  });
+  for (const pose of ['stand', 'work', 'sit']) {
+    const list = crewList[pose];
+    if (!list.length) continue;
+    const geo = crewGeo(pose);
+    const shirt = new THREE.InstancedMesh(geo.shirt, crewShirtMat, list.length), rest = new THREE.InstancedMesh(geo.rest, crewRestMat, list.length);
+    list.forEach(({ m, color }, i) => {
+      shirt.setMatrixAt(i, m); rest.setMatrixAt(i, m);
+      shirt.setColorAt(i, c.set(color)); rest.setColorAt(i, c.set(SKINS[Math.floor(rnd() * SKINS.length)]));
+    });
+    shirt.castShadow = rest.castShadow = true;
+    g.add(shirt, rest);
+  }
 
   // ── 起终点线、发车格、发车灯架 ──
   const iS = track.nearest(START_LINE[0], -START_LINE[1]);
