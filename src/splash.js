@@ -70,8 +70,12 @@ const venues = GP_VENUES.map((v) => ({ ...v, lam: v.lon * D2R, s: Math.sin(v.lat
 const home = venues.find((v) => v.home);
 
 // ── 状态 ──
-const S = { lon: -118, lat: 16, zoom: 1, phase: 'spin', t: 0, w: 0, h: 0, dpr: 1, last: null, lit: 0, alpha: 1 };
-let goto = null, resolveFinish = null, raf = 0, done = false;
+// 从赛季揭幕站墨尔本出发（铃鹿在旁），一路向东转一整圈，最后停在上海
+const S = { prevD: 999, lon: 146, lat: 16, zoom: 1, phase: 'spin', t: 0, w: 0, h: 0, dpr: 1, last: null, lit: 0, alpha: 1 };
+let goto = null, resolveFinish = null, raf = 0, done = false, ready = false;
+// 地球始终匀速自转：加载快也要把 24 站全部转完再去上海，加载慢就继续匀速转
+const SPEED = 30;      // 度/秒
+const SLOW = 28;       // 抵达上海前最后这么多度内平滑减速
 
 function resize() {
   S.dpr = Math.min(devicePixelRatio || 1, 2);
@@ -81,7 +85,6 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
-const easeIO = (x) => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
 
 function setCaption(v) {
   elCity.textContent = L(v, 'city');
@@ -97,13 +100,28 @@ function draw(now) {
   draw.prev = now;
 
   // 推进动画
-  if (S.phase === 'spin') S.lon += 26 * dt;
-  else if (S.phase === 'goto') {
-    goto.t = Math.min(1, goto.t + dt / goto.dur);
-    const e = easeIO(goto.t);
-    S.lon = goto.lon0 + goto.dLon * e;
-    S.lat = goto.lat0 + (home.lat - goto.lat0) * e;
-    if (goto.t >= 1) { S.phase = 'zoom'; S.t = 0; if (S.last !== home) setCaption(home); }
+  if (S.phase === 'spin') {
+    S.lon += SPEED * dt;
+    const dLon = ((((home.lon - S.lon) % 360) + 360) % 360);
+    // 恰好转到上海前 SLOW 度时才开始减速；此时还没亮的分站必须都在剩下这段路上（减速途中会依次亮起）
+    if (ready && dLon <= SLOW && S.prevD > SLOW) {
+      const pending = venues.every((v) => v.t0 || ((((v.lon - S.lon) % 360) + 360) % 360) <= dLon + 1);
+      if (pending) {
+        goto = { done: 0, total: dLon, lon0: S.lon, lat0: S.lat };
+        S.phase = 'goto';
+        elStep.textContent = t('即将抵达上海', 'Arriving in Shanghai');
+        setTimeout(end, (SLOW / SPEED * 2.5 + 2.4) * 1000 + 1500); // 后台标签页 rAF 暂停时的兜底
+      }
+    }
+    S.prevD = dLon;
+  } else if (S.phase === 'goto') {
+    const left = goto.total - goto.done;
+    const v = SPEED * Math.max(0.08, Math.min(1, Math.sqrt(left / SLOW)));   // 匀速，最后一段平滑减速
+    goto.done = Math.min(goto.total, goto.done + v * dt);
+    S.lon = goto.lon0 + goto.done;
+    const k = goto.total ? goto.done / goto.total : 1;
+    S.lat = goto.lat0 + (home.lat - goto.lat0) * (k * k * (3 - 2 * k));
+    if (goto.total - goto.done < 0.02) { S.phase = 'zoom'; S.t = 0; if (S.last !== home) setCaption(home); }
   } else if (S.phase === 'zoom') {
     S.t = Math.min(1, S.t + dt / 1.7);
     S.zoom = 1 + Math.pow(S.t, 2.6) * 26;
@@ -147,11 +165,13 @@ function draw(now) {
   });
 
   // 分站
-  let lit = 0;
+  let lit = 0, newest = null;
   for (const v of venues) {
     const l = v.lam - lon0;
     const z1 = v.c * Math.cos(l), z2 = v.s * st + z1 * ct;
-    if (!v.t0 && z2 > 0.52) { v.t0 = now; if (S.phase !== 'zoom') setCaption(v); }
+    // 分站经过画面中线（经度差 12° 以内）时点亮
+    const dl = ((((v.lon - S.lon) % 360) + 540) % 360) - 180;
+    if (!v.t0 && Math.abs(dl) < 12 && z2 > 0) { v.t0 = now; if (S.phase !== 'zoom' && (!newest || Math.abs(dl) < newest.d)) newest = { v, d: Math.abs(dl) }; }
     if (v.t0) lit++;
     if (z2 <= 0.03) continue;
     const x = cx + R * v.c * Math.sin(l), y = cy - R * (v.s * ct - z1 * st);
@@ -183,6 +203,7 @@ function draw(now) {
       ctx.fillText(L(v, 'city'), x + 12, y - 9);
     }
   }
+  if (newest) setCaption(newest.v);
   if (lit !== S.lit) { S.lit = lit; elCount.textContent = `${lit} / ${venues.length}`; }
 
   raf = requestAnimationFrame(draw);
@@ -208,15 +229,12 @@ window.__splash = {
   /** 加载完成：转到上海 → 放大 → 淡出。Promise 在开始淡出时兑现。 */
   finish() {
     if (done) return Promise.resolve();
-    this.progress(1, t('即将抵达上海', 'Arriving in Shanghai'));
-    const dLon = ((((home.lon - S.lon) % 360) + 360) % 360) || 360;
-    S.lon %= 360;
-    goto = { t: 0, lon0: S.lon, dLon, lat0: S.lat, dur: 1.5 + dLon / 170 };
-    S.phase = 'goto';
+    this.progress(1, t('准备就绪', 'Ready'));
+    ready = true;   // 不打断自转：等全部分站展示完，再匀速转到上海
     return new Promise((res) => {
       resolveFinish = res;
-      // 标签页在后台时 rAF 会暂停，这里兜底，保证主场景一定能显示出来
-      setTimeout(end, (goto.dur + 2.2) * 1000 + 800);
+      // 标签页在后台时 rAF 会暂停，这里兜底，保证主场景一定能显示出来（最多再转一圈半）
+      setTimeout(end, (540 / SPEED + 4) * 1000);
     });
   },
   fail(msg) { elStep.textContent = msg; root.classList.add('failed'); },
