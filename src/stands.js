@@ -29,66 +29,279 @@ function frameOf(part) {
 }
 
 /**
- * 弧形看台：OSM 中多于 4 个顶点的轮廓（如 B2、B3）是沿弯道弯曲的。
- * 取轮廓中靠赛道一侧的顶点链作为前沿，按约 10 m 一段切成若干直段，每段按原有方式排座；
- * 相邻两段之间的楔形空隙用看台剖面绕接缝竖轴旋转（lathe）填满，得到连续的弧形阶梯。
+ * 弧形看台：OSM 中多于 4 个顶点的弯曲轮廓（B2、B3、H、K），以及 E 看台这种由一串小方块排成的弧（spec.arcJoin）。
+ * 取靠赛道一侧的前沿线，重采样并平滑成圆顺的曲线，把看台剖面沿曲线整体扫掠成一个连续的阶梯体；
+ * 座位沿每一排自己的弧线排布（后排更长、座位更多），过道沿径向直通后排，
+ * 前沿挡墙、玻璃栏板、前后栏杆、后墙都是沿弧一整条，不再是一段段直的方块拼起来。
  */
-const SEG = 10;
 function trackDist(x, n) {
   let b = Infinity;
   for (const [tx, tn] of TRACK_POINTS) { const d = (tx - x) ** 2 + (tn - n) ** 2; if (d < b) b = d; }
   return Math.sqrt(b);
 }
-function curveParts(parts) {
-  const out = [];
-  parts.forEach((part, pi) => {
-    const P = part.poly, N = P.length / 2;
-    if (N <= 4) { out.push({ ...part, chain: pi }); return; }
-    const pts = [];
-    for (let i = 0; i < N; i++) pts.push([P[i * 2], P[i * 2 + 1], trackDist(P[i * 2], P[i * 2 + 1])]);
-    // 弧形带状轮廓：两端的“端头”边是相距最远的两条边；它们之间的两条长链一条是前沿、一条是后沿，离赛道近的是前沿
-    const mid = (i) => [(pts[i][0] + pts[(i + 1) % N][0]) / 2, (pts[i][1] + pts[(i + 1) % N][1]) / 2];
-    // 端头边从前沿走到后沿：沿边每米离赛道距离的变化接近 1；沿弧的边几乎为 0。取得分最高、且相距足够远的两条
-    const score = (i) => { const p = pts[i], q = pts[(i + 1) % N]; return Math.abs(p[2] - q[2]) / Math.max(1, Math.hypot(p[0] - q[0], p[1] - q[1])); };
-    let span = 0;
-    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) span = Math.max(span, Math.hypot(mid(i)[0] - mid(j)[0], mid(i)[1] - mid(j)[1]));
-    let c1 = 0, c2 = 1, best = -1;
-    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
-      const d = Math.hypot(mid(i)[0] - mid(j)[0], mid(i)[1] - mid(j)[1]);
-      if (d < span * 0.6) continue;
-      const s = score(i) + score(j);
-      if (s > best) { best = s; c1 = i; c2 = j; }
+const isArc = (part) => part.poly.length / 2 > 4;
+/** 弯曲轮廓 → 前沿线（靠赛道一侧的顶点链）与进深 */
+function arcFront(part) {
+  const P = part.poly, N = P.length / 2;
+  const pts = [];
+  for (let i = 0; i < N; i++) pts.push([P[i * 2], P[i * 2 + 1], trackDist(P[i * 2], P[i * 2 + 1])]);
+  // 两端的“端头”边从前沿走到后沿：沿边每米离赛道距离的变化接近 1；沿弧的边几乎为 0。取得分最高、且相距足够远的两条
+  const mid = (i) => [(pts[i][0] + pts[(i + 1) % N][0]) / 2, (pts[i][1] + pts[(i + 1) % N][1]) / 2];
+  const score = (i) => { const p = pts[i], q = pts[(i + 1) % N]; return Math.abs(p[2] - q[2]) / Math.max(1, Math.hypot(p[0] - q[0], p[1] - q[1])); };
+  let span = 0;
+  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) span = Math.max(span, Math.hypot(mid(i)[0] - mid(j)[0], mid(i)[1] - mid(j)[1]));
+  let c1 = 0, c2 = 1, best = -1;
+  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+    if (Math.hypot(mid(i)[0] - mid(j)[0], mid(i)[1] - mid(j)[1]) < span * 0.6) continue;
+    const s = score(i) + score(j);
+    if (s > best) { best = s; c1 = i; c2 = j; }
+  }
+  const chainA = [], chainB = [];
+  for (let i = c1 + 1; ; i = (i + 1) % N) { chainA.push(pts[i]); if (i === c2) break; }
+  for (let i = c2 + 1; ; i = (i + 1) % N) { chainB.push(pts[i]); if (i === c1) break; }
+  const avg = (c) => c.reduce((s, p) => s + p[2], 0) / c.length;
+  const [front, back] = avg(chainA) < avg(chainB) ? [chainA, chainB] : [chainB, chainA];
+  // 进深：前沿各点到后沿折线的距离取中位数
+  const segDist = (x, y, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1; const u = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / l2)); return Math.hypot(x - a[0] - u * dx, y - a[1] - u * dy); };
+  const ds = front.map(([x, y]) => { let m = Infinity; for (let i = 1; i < back.length; i++) m = Math.min(m, segDist(x, y, back[i - 1], back[i])); return m; }).sort((a, b) => a - b);
+  return { pts: front.map((p) => [p[0], p[1]]), D: Math.max(12, ds[ds.length >> 1]), h: part.h };
+}
+/** 一串方块（E1…E11）→ 一条前沿线：依次取每块前沿的两个端点 */
+function chainFront(parts) {
+  const pts = [];
+  const d2 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  parts.forEach((p, i) => {
+    const { front, rotY } = frameOf(p);
+    const ex = Math.cos(rotY), ez = -Math.sin(rotY);
+    let a = [front.x - (ex * p.L) / 2, -(front.z - (ez * p.L) / 2)], b = [front.x + (ex * p.L) / 2, -(front.z + (ez * p.L) / 2)];
+    if (pts.length) { const l = pts[pts.length - 1]; if (d2(l, b) < d2(l, a)) [a, b] = [b, a]; }
+    else if (parts[1]) { const q = parts[1].front; if (d2(a, q) < d2(b, q)) [a, b] = [b, a]; }
+    pts.push(a, b);
+  });
+  const ds = parts.map((p) => p.D).sort((a, b) => a - b);
+  return { pts, D: ds[ds.length >> 1], h: parts[0].h };
+}
+/** 折线 → 圆顺曲线：Catmull-Rom 过点、按弧长等距重采样，再做几十次拉普拉斯平滑抹掉拼接处的折角（两端固定） */
+function smoothCurve(raw, step = 1.2) {
+  const pts = [];
+  for (const p of raw) if (!pts.length || Math.hypot(p[0] - pts[pts.length - 1][0], p[1] - pts[pts.length - 1][1]) > 0.5) pts.push(p);
+  const curve = new THREE.CatmullRomCurve3(pts.map(([x, n]) => new THREE.Vector3(x, 0, n)), false, 'centripetal');
+  const n = Math.max(2, Math.round(curve.getLength() / step));
+  let out = curve.getSpacedPoints(n).map((v) => [v.x, v.z]);
+  for (let it = 0; it < 40; it++) {
+    const nx = out.map((p) => p.slice());
+    for (let i = 1; i < out.length - 1; i++) for (const c of [0, 1]) nx[i][c] = out[i][c] * 0.5 + (out[i - 1][c] + out[i + 1][c]) * 0.25;
+    out = nx;
+  }
+  return out;
+}
+
+function buildArcPart(spec, arc, ctx) {
+  const { mats, seats, base, rot, partOf, blocks, blockMap } = ctx;
+  const pi = partOf.length;
+  const P = smoothCurve(arc.pts), M = P.length;
+  // 每个采样点的切线与“指向后排”的法线（整条统一方向：离赛道更远的一侧）
+  const B = P.map((_, i) => {
+    const a = P[Math.max(0, i - 1)], b = P[Math.min(M - 1, i + 1)];
+    const tx = b[0] - a[0], tn = b[1] - a[1], l = Math.hypot(tx, tn) || 1;
+    return [-tn / l, tx / l];
+  });
+  let vote = 0;
+  for (let i = 0; i < M; i += Math.max(1, M >> 3)) { const [x, n] = P[i], [bx, bn] = B[i]; vote += trackDist(x + bx * 8, n + bn * 8) > trackDist(x - bx * 8, n - bn * 8) ? 1 : -1; }
+  if (vote < 0) for (const b of B) { b[0] = -b[0]; b[1] = -b[1]; }
+  const S = [0];
+  for (let i = 1; i < M; i++) S.push(S[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+  const Ltot = S[M - 1];
+  // 分数下标 u 处的前沿点与法线（线性插值）
+  const frame = (u) => {
+    const i = Math.min(M - 2, Math.max(0, Math.floor(u))), t = u - i;
+    const x = P[i][0] + (P[i + 1][0] - P[i][0]) * t, n = P[i][1] + (P[i + 1][1] - P[i][1]) * t;
+    let bx = B[i][0] + (B[i + 1][0] - B[i][0]) * t, bn = B[i][1] + (B[i + 1][1] - B[i][1]) * t;
+    const l = Math.hypot(bx, bn) || 1; bx /= l; bn /= l;
+    return { x, n, bx, bn, rotY: Math.atan2(bx, -bn) }; // 面向赛道 f = -b；rotY = atan2(-f.x, -f.z)，f.z = -f.n
+  };
+  const at = (u, z, y) => { const F = frame(u); return V(F.x + F.bx * z, F.n + F.bn * z, y); };
+  const uOf = (s) => { // 前沿弧长 → 分数下标
+    let lo = 0, hi = M - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S[m] < s) lo = m; else hi = m; }
+    return lo + (s - S[lo]) / Math.max(1e-6, S[hi] - S[lo]);
+  };
+  const lay = layoutRows(spec, { D: arc.D, h: arc.h });
+  const { rows, tierInfo, H, D } = lay;
+  const W = new THREE.Group(); W.updateMatrixWorld(true); // 世界坐标（栏杆批处理用）
+  const g = new THREE.Group();
+
+  // 沿弧扫掠一条剖面折线（每条边一个条带，沿弧方向法线平滑）
+  const sweep = (prof, mat, cast = true) => {
+    const geos = [];
+    for (let k = 0; k < prof.length - 1; k++) {
+      const [z0, y0] = prof[k], [z1, y1] = prof[k + 1];
+      if (Math.abs(z0 - z1) + Math.abs(y0 - y1) < 1e-4) continue;
+      const pos = [], uv = [], idx = [];
+      for (let i = 0; i < M; i++) {
+        const a = at(i, z0, y0), b = at(i, z1, y1);
+        pos.push(a.x, a.y, a.z, b.x, b.y, b.z);
+        uv.push(S[i] / 4, 0, S[i] / 4, 1);
+        if (i) { const q = i * 2; idx.push(q - 2, q - 1, q, q - 1, q + 1, q); }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      geo.setIndex(idx);
+      geo.computeVertexNormals();
+      geos.push(geo);
     }
-    const chainA = [], chainB = [];
-    for (let i = c1 + 1; ; i = (i + 1) % N) { chainA.push(pts[i]); if (i === c2) break; }
-    for (let i = c2 + 1; ; i = (i + 1) % N) { chainB.push(pts[i]); if (i === c1) break; }
-    const avg = (c) => c.reduce((s, p) => s + p[2], 0) / c.length;
-    const [front, back] = avg(chainA) < avg(chainB) ? [chainA, chainB] : [chainB, chainA];
-    // 前沿链沿弧长等分成若干段
-    const cum = [0];
-    for (let i = 1; i < front.length; i++) cum.push(cum[i - 1] + Math.hypot(front[i][0] - front[i - 1][0], front[i][1] - front[i - 1][1]));
-    const len = cum[cum.length - 1], n = Math.max(1, Math.round(len / SEG));
-    const at = (d) => {
-      let i = 1; while (i < cum.length - 1 && cum[i] < d) i++;
-      const t = (d - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]);
-      return [front[i - 1][0] + (front[i][0] - front[i - 1][0]) * t, front[i - 1][1] + (front[i][1] - front[i - 1][1]) * t];
-    };
-    // 进深：前沿各点到后沿折线的距离取中位数（整段一致，相邻段的台阶才能对齐）
-    const segDist = (x, y, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1; const u = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / l2)); return Math.hypot(x - a[0] - u * dx, y - a[1] - u * dy); };
-    const ds = [];
-    for (let k = 0; k <= 10; k++) { const [x, y] = at((len * k) / 10); let m = Infinity; for (let i = 1; i < back.length; i++) m = Math.min(m, segDist(x, y, back[i - 1], back[i])); ds.push(m); }
-    ds.sort((a, b) => a - b);
-    const D = Math.max(12, ds[5]);
-    for (let k = 0; k < n; k++) {
-      const a = at((len * k) / n), b = at((len * (k + 1)) / n);
-      const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      let fx = -(b[1] - a[1]) / L, fn = (b[0] - a[0]) / L;
-      const mx = (a[0] + b[0]) / 2, mn = (a[1] + b[1]) / 2;
-      if (trackDist(mx + fx * 8, mn + fn * 8) > trackDist(mx - fx * 8, mn - fn * 8)) { fx = -fx; fn = -fn; } // 每段单独判断：朝向赛道一侧
-      out.push({ ...part, code: part.code, front: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], f: [fx, fn], L, D, chain: pi, a, b, first: k === 0, last: k === n - 1 });
+    const m = new THREE.Mesh(mergeGeometries(geos), mat);
+    m.castShadow = cast; m.receiveShadow = true;
+    return m;
+  };
+  const two = (m) => { const c = m.clone(); c.side = THREE.DoubleSide; c.onBeforeCompile = m.onBeforeCompile; c.customProgramCacheKey = m.customProgramCacheKey; return c; };
+  mats.led.side = THREE.DoubleSide; // 灯带是夜间自发光材质，不能复制（复制后不随夜间点亮），直接改成双面
+  if (!ctx.arcMats) ctx.arcMats = { concrete: two(mats.concrete), white: two(mats.white), dark: two(mats.dark), led: mats.led };
+  g.add(sweep(lay.prof.slice(0, -1), ctx.arcMats.concrete));                                   // 阶梯体（前沿、台阶、后沿）
+  g.add(sweep([[D - 0.4, 0], [D - 0.4, H + 1.4], [D, H + 1.4], [D, 0]], ctx.arcMats.white));    // 后墙
+  const zoneColor = spec.zones[lay.tiers[0].zone].color;
+  g.add(sweep([[-0.3, 0], [-0.3, lay.base - 0.1], [0, lay.base - 0.1]], ctx.colorMat2(zoneColor), false)); // 前沿挡墙（看台标识色）
+  // 两端侧墙
+  for (const [u, dir] of [[0, -1], [M - 1, 1]]) {
+    const F = frame(u), side = new THREE.Mesh(extrudeProfile(lay.prof, 0.35), mats.white);
+    const tx = (P[Math.min(M - 1, u + 1)][0] - P[Math.max(0, u - 1)][0]), tn = (P[Math.min(M - 1, u + 1)][1] - P[Math.max(0, u - 1)][1]), tl = Math.hypot(tx, tn) || 1;
+    side.position.copy(V(F.x + (dir * tx * 0.17) / tl, F.n + (dir * tn * 0.17) / tl, 0));
+    side.rotation.y = F.rotY; side.castShadow = true;
+    g.add(side);
+  }
+
+  // 过道：沿前沿等分成若干区，过道沿径向直通后排
+  const aisleW = AISLE * PITCH, blockW = BLOCK * PITCH;
+  const nB = Math.max(1, Math.round((Ltot - 1.2 + aisleW) / (blockW + aisleW)));
+  const wb = (Ltot - 1.2 - (nB - 1) * aisleW) / nB;
+  const spans = [], aisles = [];
+  for (let j = 0; j < nB; j++) {
+    const sa = 0.6 + j * (wb + aisleW);
+    spans.push([sa, sa + wb]);
+    if (j < nB - 1) aisles.push(sa + wb + aisleW / 2);
+  }
+  const seatStart = seats.length;
+  const rand = ctx.rand;
+  const rails = (z, y) => { // 沿弧一条连续栏杆（扶手 + 每约 2.4 m 一根立柱）
+    for (let i = 0; i < M; i++) {
+      const nxt = Math.min(M - 1, i + 1);
+      if (nxt !== i) { const a = at(i, z, y), b = at(nxt, z, y); ctx.rails.seg(W, [a.x, a.y, a.z], [b.x, b.y, b.z], 0.05); }
+      if (i % 2 === 0 || i === M - 1) { const a = at(i, z, y - 1.05), b = at(i, z, y); ctx.rails.seg(W, [a.x, a.y, a.z], [b.x, b.y, b.z], 0.04); }
+    }
+  };
+  tierInfo.forEach((ti, k) => {
+    const r0 = rows[ti.first], rLast = rows[ti.first + ti.count - 1];
+    const zone = lay.tiers[k].zone;
+    const vom = vomRows(ti.count);
+    const key = pi + ':' + k + ':' + zone + ':';
+    let blk = blockMap.get(key);
+    if (!blk) { blk = { idx: blocks.length, code: spec.zones[zone].name, side: '', tier: k, zone, count: 0, sum: new THREE.Vector3(), top: 0, part: pi }; blockMap.set(key, blk); blocks.push(blk); }
+    for (let r = 0; r < ti.count; r++) {
+      const row = rows[ti.first + r];
+      let num = 0;
+      spans.forEach(([sa, sb], si) => {
+        // 这一排在本区内的弧线（按前沿采样点径向偏移）
+        const ua = uOf(sa), ub = uOf(sb);
+        const line = [ua];
+        for (let i = Math.ceil(ua); i < ub; i++) if (i > ua) line.push(i);
+        line.push(ub);
+        const pts = line.map((u) => at(u, row.z, row.y));
+        const cum = [0];
+        for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + pts[i].distanceTo(pts[i - 1]));
+        const len = cum[cum.length - 1], n = Math.floor(len / PITCH);
+        const pad = (len - n * PITCH) / 2;
+        let j = 1;
+        for (let q = 0; q < n; q++) {
+          const d = pad + (q + 0.5) * PITCH;
+          while (j < cum.length - 1 && cum[j] < d) j++;
+          const t = (d - cum[j - 1]) / Math.max(1e-6, cum[j] - cum[j - 1]);
+          const u = line[j - 1] + (line[j] - line[j - 1]) * t;
+          // 出入口两侧让出座位
+          const cut = VOM_W / 2 - aisleW / 2 + 0.15;
+          if (vom.has(r) && ((si > 0 && d < cut) || (si < spans.length - 1 && len - d < cut))) continue;
+          const v = pts[j - 1].clone().lerp(pts[j], t);
+          num++;
+          blk.count++; blk.sum.add(v); blk.top = Math.max(blk.top, v.y);
+          seats.push({ zone, block: blk.idx, row: r + 1, num, tier: k, part: pi, j: rand() });
+          base.push(v.x, v.y, v.z);
+          rot.push(frame(u).rotY);
+        }
+        // 远景替身：座面条带
+        const quad = [];
+        for (let i = 1; i < line.length; i++) {
+          const a0 = at(line[i - 1], row.z - ROW_D * 0.45, row.y + 0.55), b0 = at(line[i], row.z - ROW_D * 0.45, row.y + 0.55);
+          const a1 = at(line[i - 1], row.z + ROW_D * 0.45, row.y + 0.55), b1 = at(line[i], row.z + ROW_D * 0.45, row.y + 0.55);
+          quad.push(a0, b0, b1, a0, b1, a1);
+        }
+        ctx.carpet.push({ world: quad, color: spec.zones[zone].color });
+      });
+    }
+    // 过道：台阶防滑边、中线扶手；出入口
+    for (const s of aisles) {
+      const u = uOf(s), F = frame(u);
+      const q = new THREE.Quaternion().setFromAxisAngle(UP, F.rotY), one = new THREE.Vector3(1, 1, 1);
+      for (let r = 0; r < ti.count; r++) {
+        const rr = rows[ti.first + r];
+        ctx.nosing.push(new THREE.Matrix4().compose(at(u, rr.z - ROW_D * 0.5 + 0.04, rr.y + 0.012), q, one));
+      }
+      const a = at(u, r0.z - 0.3, r0.y + 1.0), b = at(u, rLast.z + 0.3, rLast.y + 1.0);
+      ctx.rails.seg(W, [a.x, a.y, a.z], [b.x, b.y, b.z], 0.05);
+      addVomitory(ctx, at(u, 0, 0), F.rotY, rows, ti, vom);
+    }
+    // 本层前沿栏杆 + 玻璃栏板：沿弧连续
+    const fy = (k === 0 ? lay.base : tierInfo[k - 1].lipY + (lay.tiers[k].lift ?? 3)) + 1.05;
+    const fz = r0.z - ROW_D * 0.5 - 0.05;
+    rails(fz, fy);
+    ctx.glassGeos.push(sweep([[fz + 0.03, fy - 1.05], [fz + 0.03, fy - 0.05]], mats.glassRail, false).geometry);
+    // 两层之间的挑檐：深色饰面 + 灯带
+    if (ti.lipZ !== undefined) {
+      const lz = ti.lipZ, ly = ti.lipY;
+      g.add(sweep([[lz - 0.3, ly + 1.5], [lz - 0.3, ly + 2.9]], ctx.arcMats.dark, false));
+      g.add(sweep([[lz - 0.32, ly + 1.15], [lz - 0.32, ly + 1.45]], ctx.arcMats.led, false));
     }
   });
-  return out;
+  rails(D - 0.3, H + 2.4); // 后排栏杆
+  // 拾取用碰撞盒（沿弧每约 12 m 一个）
+  const nH = Math.max(1, Math.round(Ltot / 12));
+  for (let k = 0; k < nH; k++) {
+    const u = uOf(((k + 0.5) * Ltot) / nH), F = frame(u);
+    const hb = new THREE.Mesh(new THREE.BoxGeometry(Ltot / nH + 0.5, H + 10, D), ctx.hitMat);
+    hb.position.copy(at(u, D / 2, (H + 10) / 2)); hb.rotation.y = F.rotY;
+    hb.visible = false; hb.userData.standId = spec.id;
+    g.add(hb); ctx.hitboxes.push(hb);
+  }
+  const Fm = frame(uOf(Ltot / 2));
+  const f = new THREE.Vector3(-Fm.bx, 0, Fm.bn);
+  partOf.push({ f, rotY: Fm.rotY, front: at(uOf(Ltot / 2), 0, 0), L: Ltot, D, H, G: W, pick: { arc: true, from: seatStart, to: seats.length } });
+  return g;
+}
+
+/** 出入口（通道口）所在的排：约在座位区中段偏上，占 3 排（照片：每条过道一个） */
+const VOM_W = 2.8;
+function vomRows(count) {
+  const set = new Set();
+  if (count < 9) return set;
+  const r0 = Math.round(count * 0.5);
+  for (let r = r0; r < r0 + 3; r++) set.add(r);
+  return set;
+}
+/** 出入口：过道中段一个白色混凝土框，正面一块深色门洞（通往看台下方的通道），顶上一圈栏杆 */
+function addVomitory(ctx, origin, rotY, rows, ti, vom) {
+  if (!vom.size) return;
+  const rs = [...vom], ra = rows[ti.first + rs[0]], rb = rows[ti.first + rs[rs.length - 1]];
+  const z0 = ra.z - ROW_D * 0.5, z1 = rb.z + ROW_D * 0.5, top = rb.y + 1.1;
+  const q = new THREE.Quaternion().setFromAxisAngle(UP, rotY), one = new THREE.Vector3(1, 1, 1);
+  const place = (lx, ly, lz) => new THREE.Vector3(lx, ly, lz).applyQuaternion(q).add(origin);
+  const box = (w, h, d, lx, ly, lz) => ctx.vomBox.push(new THREE.Matrix4().compose(place(lx, ly, lz), q, new THREE.Vector3(w, h, d)));
+  const yb = ra.y - 0.2;
+  // 三面矮墙（两侧 + 后侧），前面敞开为门洞
+  box(0.25, top - yb, z1 - z0, -VOM_W / 2, (top + yb) / 2, (z0 + z1) / 2);
+  box(0.25, top - yb, z1 - z0, VOM_W / 2, (top + yb) / 2, (z0 + z1) / 2);
+  box(VOM_W + 0.25, top - yb, 0.25, 0, (top + yb) / 2, z1);
+  // 门洞：向下通入看台内部的深色洞口
+  ctx.vomHole.push(new THREE.Matrix4().compose(place(0, (rb.y + 0.3 + yb) / 2, z0 + 0.05), q, new THREE.Vector3(VOM_W - 0.3, rb.y + 0.3 - yb, 1)));
+  ctx.vomFloor.push(new THREE.Matrix4().compose(place(0, rb.y + 0.3, (z0 + z1) / 2), q, new THREE.Vector3(VOM_W - 0.3, 1, z1 - z0 - 0.3)));
 }
 
 /** 生成每一层的排：返回 rows[{z,y,tier,r}] 与剖面 */
@@ -120,7 +333,8 @@ function layoutRows(spec, part) {
     }
     tierInfo.push({ first, count: t.rows, rise: t.rise, t });
   });
-  const H = y, D = Math.max(z + 1.2, part.D);
+  // 后墙收到最后一排后面留一条约 3 m 的走道，不留一大片空平台（主看台后立面按真实进深）
+  const H = y, D = Math.max(z + 1.2, spec.realMain ? part.D : Math.min(part.D, z + 3.2));
   prof.push([D, y], [D, 0]);
   return { rows, tierInfo, prof, H, D, base, tiers };
 }
@@ -154,93 +368,6 @@ function mergeStatic(g, keep) {
   }
 }
 
-/** 弧形看台相邻两段之间的扇形填充：看台剖面绕接缝竖轴旋转，台阶与两侧直段对齐 */
-function buildFans(spec, parts, mats) {
-  const geos = [];
-  for (let i = 1; i < parts.length; i++) {
-    const p0 = parts[i - 1], p1 = parts[i];
-    if (!p0.a || !p1.a || p0.chain !== p1.chain) continue;
-    const lay = layoutRows(spec, p1);
-    const r0 = frameOf(p0).rotY, r1 = frameOf(p1).rotY;
-    let d = r1 - r0; d = Math.atan2(Math.sin(d), Math.cos(d));
-    if (Math.abs(d) < 1e-3) continue;
-    const g = new THREE.LatheGeometry(lay.prof.map(([z, y]) => new THREE.Vector2(Math.max(0, z), y)), Math.max(2, Math.ceil(Math.abs(d) / 0.08)), d > 0 ? r0 : r1, Math.abs(d));
-    const j = p0.b; // 两段共用的前沿接缝点
-    g.translate(j[0], 0, -j[1]);
-    geos.push(g.index ? g.toNonIndexed() : g);
-  }
-  const m = new THREE.Mesh(mergeGeometries(geos), mats.concrete.clone());
-  m.material.side = THREE.DoubleSide;
-  m.castShadow = m.receiveShadow = true;
-  return m;
-}
-
-/**
- * 把相邻的几段看台连成一整条（spec.joinParts）：OSM 里 B1/B2/B3、E1…E11 是分开的轮廓，中间留有几米空隙。
- * 每对相邻段取最近的两个前沿端点，中间补一段不设座位的阶梯（看台剖面直接拉伸），
- * 接缝两侧再用看台剖面绕竖轴旋转的扇形补齐转角，整座看台读起来是一道连续的弧。
- * 需在 buildSeatPart 之前调用：会给被连接的一端打上 join 标记，那一端不再建侧墙。
- */
-function planJoins(parts) {
-  const ends = (p) => {
-    const { front, rotY } = frameOf(p);
-    const ex = new THREE.Vector3(Math.cos(rotY), 0, -Math.sin(rotY));
-    return [-1, 1].map((s) => ({ s, p: front.clone().addScaledVector(ex, (s * p.L) / 2), rotY }));
-  };
-  const joins = [];
-  for (let i = 1; i < parts.length; i++) {
-    const p0 = parts[i - 1], p1 = parts[i];
-    if (p0.a && p1.a && p0.chain === p1.chain) continue; // 同一弧形段内部已由 buildFans 连接
-    let best = null;
-    for (const e0 of ends(p0)) for (const e1 of ends(p1)) {
-      const d = e0.p.distanceTo(e1.p);
-      if (!best || d < best.d) best = { d, e0, e1 };
-    }
-    if (!best || best.d > 30) continue;
-    (p0.join ||= {})[best.e0.s] = true;
-    (p1.join ||= {})[best.e1.s] = true;
-    joins.push({ p0, p1, ...best });
-  }
-  return joins;
-}
-function buildJoins(spec, joins, mats) {
-  const geos = [], walls = [];
-  const fan = (at, ra, rb, lay) => {
-    let d = rb - ra; d = Math.atan2(Math.sin(d), Math.cos(d));
-    if (Math.abs(d) < 1e-3) return;
-    const g = new THREE.LatheGeometry(lay.prof.map(([z, y]) => new THREE.Vector2(Math.max(0, z), y)), Math.max(2, Math.ceil(Math.abs(d) / 0.08)), d > 0 ? ra : ra + d, Math.abs(d));
-    g.translate(at.x, 0, at.z);
-    geos.push(g.index ? g.toNonIndexed() : g);
-  };
-  for (const { p0, p1, d, e0, e1 } of joins) {
-    const lay = layoutRows(spec, p0.D <= p1.D ? p0 : p1); // 取较浅的一段的剖面，避免补块从后墙穿出
-    if (d < 0.5) { fan(e0.p, e0.rotY, e1.rotY, lay); continue; }
-    // 中间的连接段：前沿从 e0 到 e1，朝向两段朝向的平均（朝赛道一侧）
-    const dir = e1.p.clone().sub(e0.p).normalize();
-    const f0 = frameOf(p0).f, f1 = frameOf(p1).f;
-    const fb = new THREE.Vector3(dir.z, 0, -dir.x);
-    if (fb.dot(f0.clone().add(f1)) < 0) fb.negate();
-    const rb = Math.atan2(-fb.x, -fb.z);
-    const mid = e0.p.clone().add(e1.p).multiplyScalar(0.5);
-    const m4 = new THREE.Matrix4().compose(mid, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rb), new THREE.Vector3(1, 1, 1));
-    const body = extrudeProfile(lay.prof, d).applyMatrix4(m4);
-    geos.push(body.index ? body.toNonIndexed() : body);
-    const wall = new THREE.BoxGeometry(d, lay.H + 1.4, 0.4).translate(0, (lay.H + 1.4) / 2, lay.D - 0.2).applyMatrix4(m4);
-    walls.push(wall.index ? wall.toNonIndexed() : wall);
-    fan(e0.p, e0.rotY, rb, lay);
-    fan(e1.p, rb, e1.rotY, lay);
-  }
-  const g = new THREE.Group();
-  if (geos.length) {
-    const m = new THREE.Mesh(mergeGeometries(geos), mats.concrete.clone());
-    m.material.side = THREE.DoubleSide;
-    m.castShadow = m.receiveShadow = true;
-    g.add(m);
-  }
-  if (walls.length) { const w = new THREE.Mesh(mergeGeometries(walls), mats.white); w.castShadow = true; g.add(w); }
-  return g;
-}
-
 function buildSeatPart(spec, part, pi, ctx) {
   const { mats, seats, base, rot, partOf, blocks, blockMap } = ctx;
   const { front, f, rotY } = frameOf(part);
@@ -269,10 +396,8 @@ function buildSeatPart(spec, part, pi, ctx) {
     band.position.set(0, H * 0.45, D + 0.02);
     G.add(band);
   }
-  // 两端侧墙（弧形看台内部的接缝处不要侧墙，由扇形填充连起来）
+  // 两端侧墙
   for (const sx of [-1, 1]) {
-    if (part.a && ((sx < 0 && !part.first) || (sx > 0 && !part.last))) continue;
-    if (part.join?.[sx]) continue; // 与相邻看台连成一体的一端
     const side = new THREE.Mesh(extrudeProfile(lay.prof, 0.35), mats.white);
     side.position.x = sx * (L / 2 + 0.17);
     side.castShadow = true;
@@ -326,6 +451,9 @@ function buildSeatPart(spec, part, pi, ctx) {
     const t = ti.t;
     const index = new Int32Array(ti.count * nSlots).fill(-1);
     const r0 = rows[ti.first];
+    const vom = vomRows(ti.count);
+    const aisleX = [];
+    for (let s = BLOCK; s < nSlots; s += per) aisleX.push(x0 + (s + AISLE / 2) * PITCH);
     pick.tiers.push({ z0: r0.z, y0: r0.y + 0.45, k: ti.rise / ROW_D, rows: ti.count, nSlots, x0, index });
     for (let r = 0; r < ti.count; r++) {
       const row = rows[ti.first + r];
@@ -353,6 +481,7 @@ function buildSeatPart(spec, part, pi, ctx) {
           blocks.push(b);
         }
         const lx = x0 + (s + 0.5) * PITCH;
+        if (vom.has(r) && aisleX.some((ax) => Math.abs(lx - ax) < VOM_W / 2 + 0.1)) continue; // 出入口让出座位
         v.set(lx, row.y, row.z).applyMatrix4(G.matrixWorld);
         b.count++; b.sum.add(v); b.top = Math.max(b.top, v.y);
         index[r * nSlots + s] = seats.length;
@@ -371,6 +500,7 @@ function buildSeatPart(spec, part, pi, ctx) {
         ctx.nosing.push(new THREE.Matrix4().makeTranslation(ax, rr.y + 0.012, rr.z - ROW_D * 0.5 + 0.04).premultiply(G.matrixWorld));
       }
       rails.seg(G, [ax, r0.y + 1.0, r0.z - 0.3], [ax, rLast.y + 1.0, rLast.z + 0.3], 0.05);
+      addVomitory(ctx, new THREE.Vector3(ax, 0, 0).applyMatrix4(G.matrixWorld), rotY, rows, ti, vom);
       for (let r = 0; r < ti.count; r += 4) {
         const rr = rows[ti.first + r];
         rails.seg(G, [ax, rr.y, rr.z], [ax, rr.y + 1.0, rr.z], 0.04);
@@ -487,14 +617,19 @@ function buildSeatStand(spec, mats, seatGeo, common) {
   const ctx = {
     mats, seats: [], base: [], rot: [], partOf: [], blocks: [], blockMap: new Map(),
     rand: rng(spec.id.charCodeAt(0) * 7919),
-    rails: railBatcher(mats.steel), glassPanels: [], nosing: [], carpet: [], extra: [], hitboxes: common.hitboxes, hitMat: common.hitMat, colorMat: common.colorMat,
+    rails: railBatcher(mats.steel), glassPanels: [], glassGeos: [], nosing: [], carpet: [], extra: [], hitboxes: common.hitboxes, hitMat: common.hitMat, colorMat: common.colorMat,
+    vomBox: [], vomHole: [], vomFloor: [],
+    colorMat2: (c) => { const m = common.colorMat(c); if (!m.userData.ds) { const k = m.clone(); k.side = THREE.DoubleSide; k.onBeforeCompile = m.onBeforeCompile; k.customProgramCacheKey = m.customProgramCacheKey; m.userData.ds = k; } return m.userData.ds; },
   };
-  const parts = spec.curve ? curveParts(OSM_STANDS[spec.id]) : OSM_STANDS[spec.id];
-  const joins = spec.joinParts ? planJoins(parts) : [];
-  parts.forEach((part, pi) => g.add(buildSeatPart(spec, part, pi, ctx)));
-  if (spec.curve) g.add(buildFans(spec, parts, mats));
-  if (joins.length) g.add(buildJoins(spec, joins, mats));
+  const parts = OSM_STANDS[spec.id];
+  if (spec.arcJoin) g.add(buildArcPart(spec, chainFront(parts), ctx)); // 一串小方块排成的弧：整条做成一道连续弧形看台
+  else for (const part of parts) g.add(spec.curve && isArc(part) ? buildArcPart(spec, arcFront(part), ctx) : buildSeatPart(spec, part, ctx.partOf.length, ctx));
   g.add(ctx.rails.build());
+  // 出入口（实例化）
+  const inst = (geo, mat, list) => { if (!list.length) return; const im = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((m, i) => im.setMatrixAt(i, m)); im.castShadow = im.receiveShadow = true; g.add(im); ctx.vomMeshes = [...(ctx.vomMeshes || []), im]; };
+  inst(new THREE.BoxGeometry(1, 1, 1), mats.white, ctx.vomBox);
+  inst(new THREE.PlaneGeometry(1, 1).rotateY(Math.PI), mats.vomDark, ctx.vomHole);
+  inst(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), mats.vomDark, ctx.vomFloor);
   ctx.extra.forEach((m) => g.add(m));
   // 栏杆玻璃面板（合并成一个网格）
   const panels = ctx.glassPanels.map(({ G, L, y, z }) => {
@@ -502,7 +637,8 @@ function buildSeatStand(spec, mats, seatGeo, common) {
     geo.translate(0, y, z);
     return geo.applyMatrix4(G.matrixWorld);
   });
-  if (panels.length) g.add(new THREE.Mesh(mergeGeometries(panels), mats.glassRail));
+  panels.push(...ctx.glassGeos.map((geo) => { geo.deleteAttribute('normal'); geo.computeVertexNormals(); return geo; }));
+  if (panels.length) g.add(new THREE.Mesh(mergeGeometries(panels.map((x) => (x.index ? x.toNonIndexed() : x))), mats.glassRail));
 
   const { seats, base, rot, blocks } = ctx;
   const mesh = new THREE.InstancedMesh(seatGeo, mats.seat, seats.length);
@@ -520,6 +656,7 @@ function buildSeatStand(spec, mats, seatGeo, common) {
   const cp = [], cc = [], c3 = new THREE.Color(), vv = new THREE.Vector3();
   for (const r of ctx.carpet) {
     c3.set(r.color);
+    if (r.world) { for (const v of r.world) { cp.push(v.x, v.y, v.z); cc.push(c3.r, c3.g, c3.b); } continue; }
     const quad = [[r.xa, r.z0], [r.xb, r.z0], [r.xb, r.z1], [r.xa, r.z0], [r.xb, r.z1], [r.xa, r.z1]];
     for (const [x, z] of quad) { vv.set(x, r.y, z).applyMatrix4(r.G.matrixWorld); cp.push(vv.x, vv.y, vv.z); cc.push(c3.r, c3.g, c3.b); }
   }
@@ -541,16 +678,25 @@ function buildSeatStand(spec, mats, seatGeo, common) {
     b.f = ctx.partOf[b.part].f;
   });
 
-  mergeStatic(g, new Set([mesh, carpet, nose]));
+  mergeStatic(g, new Set([mesh, carpet, nose, ...(ctx.vomMeshes || [])]));
   const s = { g, mesh, seats, base: new Float32Array(base), rot: new Float32Array(rot), blocks, parts: ctx.partOf, carpet };
   s.pickSeat = (ray) => pickSeat(s, ray);
   return s;
 }
 
-const _r = new THREE.Ray();
+const _r = new THREE.Ray(), _p = new THREE.Vector3();
 function pickSeat(s, ray) {
   let best = -1, bt = Infinity;
   for (const part of s.parts) {
+    if (part.pick.arc) { // 弧形看台：逐个座位求射线距离（单座看台几千个，点选时才算）
+      for (let i = part.pick.from; i < part.pick.to; i++) {
+        _p.set(s.base[i * 3], s.base[i * 3 + 1] + 0.5, s.base[i * 3 + 2]);
+        const tt = _p.sub(ray.origin).dot(ray.direction);
+        if (tt <= 0 || tt >= bt) continue;
+        if (ray.distanceSqToPoint(_p.set(s.base[i * 3], s.base[i * 3 + 1] + 0.5, s.base[i * 3 + 2])) < 0.3 * 0.3) { best = i; bt = tt; }
+      }
+      continue;
+    }
     _r.copy(ray).applyMatrix4(part.pick.inv);
     const o = _r.origin, d = _r.direction;
     for (const t of part.pick.tiers) {
@@ -576,7 +722,7 @@ export function seatMatrix(s, i, scale, lift, out) {
   return out.compose(new THREE.Vector3(s.base[i * 3], s.base[i * 3 + 1] + lift, s.base[i * 3 + 2]), q, new THREE.Vector3(scale, scale, scale));
 }
 export const seatWorld = (s, i) => new THREE.Vector3(s.base[i * 3], s.base[i * 3 + 1], s.base[i * 3 + 2]);
-export const seatFacing = (s, i) => s.parts[s.seats[i].part].f;
+export const seatFacing = (s, i) => (s.parts[s.seats[i].part].pick.arc ? new THREE.Vector3(-Math.sin(s.rot[i]), 0, -Math.cos(s.rot[i])) : s.parts[s.seats[i].part].f);
 
 /** 座位颜色 = 官方票区颜色（带一点随机明暗，避免看起来像一整块色板） */
 export function seatColor(spec, s, out = new THREE.Color()) {
@@ -804,6 +950,7 @@ export function buildStands(scene) {
     concrete: std('#c4c7cd', { roughness: 0.9 }, 0.2),
     white: std('#c9ced5', { roughness: 0.5, metalness: 0.25 }, 0.18),
     dark: std('#2a2c31', { roughness: 0.6 }, 0.2),
+    vomDark: new THREE.MeshStandardMaterial({ color: '#141518', roughness: 0.95, side: THREE.DoubleSide }), // 出入口门洞
     steel: std('#c9ced6', { roughness: 0.35, metalness: 0.6 }, 0.45),
     glass: lampMat('#7fa6c4', '#ffd9a0', 1.2, { roughness: 0.1, metalness: 0.6 }),
     glassRail: new THREE.MeshStandardMaterial({ color: '#cfe3f2', transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0.2, side: THREE.DoubleSide, depthWrite: false }),

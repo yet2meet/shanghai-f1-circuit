@@ -59,20 +59,21 @@ export const STANDS = [
     desc: '沿 1–3 号弯外侧环绕的三段看台，俯瞰不断收紧的复合右弯，是起步后首圈缠斗的观赛点。',
     descEn: 'Three sections wrapping around the outside of Turns 1–3, overlooking the tightening right-hander — the place to watch first-lap battles.',
     base: 1.8, height: 15, maxRows: 30,
-    curve: true, // B1 直段 + B2、B3 两段弧形，是一座沿 1–3 号弯连续环绕的看台（OSM 中 B2、B3 为弧形轮廓）
+    curve: true, // B1 直段 + B2、B3 两段圆滑的弧形看台（三大块，各自连续）
     tiers: [{ zone: 'b' }],
     zones: { b: { name: 'B', color: '#e9579a', price: 2180, day: { fri: 410, sat: 740, sun: 1890 } } },
   },
   {
     id: 'H', code: 'H', name: 'H 看台', nameEn: 'Grandstand H', type: 'seats', color: '#6f4ba3',
-    curve: true, // OSM 轮廓沿弯道弯曲：按弧形逐段排座，段间扇形补齐，连续成一道弧
+    curve: true, // OSM 轮廓沿弯道弯曲：整条做成连续弧形
     roofBottom: 18,
     turns: '1.2 km 长直道末端 · 14 号发卡弯刹车区', turnsEn: 'End of the 1.2 km back straight · Turn 14 braking zone',
     gate: '9 号门', gateEn: 'Gate 9',
     desc: '13 片荷叶形顶棚下的看台，位于长直道末端，赛车全速抵达后在 14 号发卡弯前重刹。与 K 看台同属 H/K 票区。',
     descEn: 'Seats beneath 13 lotus-leaf roofs at the end of the back straight, where cars brake hard from top speed for the Turn 14 hairpin. Shares the H/K zone with Grandstand K.',
     base: 1.6,
-    tiers: [{ zone: 'hk' }],
+    // 上下两层：“分 a、b 两层的看台层位共有 21 级的台阶，20 排的塑料座位”（新浪体育 2004-09-20 观赛指南）。票区不分层，统一 H/K
+    tiers: [{ rows: 10, rise: 0.48, zone: 'hk' }, { rows: 10, rise: 0.5, gap: 1.8, lift: 2.4, zone: 'hk' }],
     zones: { hk: { name: 'H/K', color: '#6f4ba3', price: 1680, day: { fri: 330, sat: 660, sun: 1450 } } },
   },
   {
@@ -84,7 +85,8 @@ export const STANDS = [
     desc: '与 H 看台隔着长直道相望，13 片荷叶形顶棚，可以看到赛车全速驶来后在发卡弯前重刹。与 H 看台同属 H/K 票区。',
     descEn: 'Facing Grandstand H across the back straight under 13 lotus-leaf roofs: watch cars arrive at full speed and brake for the hairpin. Shares the H/K zone with Grandstand H.',
     base: 1.6,
-    tiers: [{ zone: 'hk' }],
+    // 上下两层：“分 a、b 两层的看台层位共有 21 级的台阶，20 排的塑料座位”（新浪体育 2004-09-20 观赛指南）。票区不分层，统一 H/K
+    tiers: [{ rows: 10, rise: 0.48, zone: 'hk' }, { rows: 10, rise: 0.5, gap: 1.8, lift: 2.4, zone: 'hk' }],
     zones: { hk: { name: 'H/K', color: '#6f4ba3', price: 1680, day: { fri: 330, sat: 660, sun: 1450 } } },
   },
   {
@@ -95,8 +97,8 @@ export const STANDS = [
     descEn: 'Reopened for 2026: a row of small stands outside Turns 11–13, watching cars turn into 11 and accelerate through the long 12–13 right-hander onto the back straight. E tickets include a free shuttle.',
     base: 1.2, height: 7.5,
     // 2026 年升级改造后“可容纳 4000 余名观众”（上海市国资委 2026-03-13 通稿），OSM 轮廓排满会多出一倍多，按此限制排数
-    maxRows: 7, // 7 排 ≈ 4300 座
-    joinParts: true, // E1…E11 连成一整道弧（段间空隙补成不设座位的阶梯，座位数不变）
+    maxRows: 6, // 弧形连续排布后 6 排 ≈ 4300 座
+    arcJoin: true, // E1…E11（OSM 里一串小方块）实为一座连续的弧形看台：整条按弧形重建
     tiers: [{ zone: 'e' }],
     zones: { e: { name: 'E', color: '#e3dc3d', price: 1580, day: null, note: '仅售三日票', noteEn: '3-day pass only' } },
   },
