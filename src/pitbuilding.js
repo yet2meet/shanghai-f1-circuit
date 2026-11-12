@@ -13,6 +13,9 @@ import { OSM_STANDS } from './osm-data.js';
 import { TEAMS } from './data.js';
 import { f1CarGeometry } from './f1car.js';
 import { V, rng, std, floodlit, lampMat, canvasTex, nightEmissives } from './util.js';
+import { TRACK_POINTS } from './track-data.js';
+import { crewGeo, tyreGeo, blanketGeo, tyreTex, blanketTex, hoseGeo, jackGeo, blobTex, garageFloorTex, garageCeilTex, garageWallTex } from './garagekit.js';
+import { screenAtlas, screenGeo } from './pitscreens.js';
 
 /** 单色标志在深色底上绘成白色剪影（真实车库在深色背景上也多用单色白标），浅色底保留原色；
  *  manifest.json 的 fullColor 列表中的彩色标志（迈凯伦、红牛、法拉利）始终保留原色：
@@ -207,8 +210,11 @@ export function buildPitBuilding(scene, brand = null) {
   const lights = batch(box(1.3, 0.06, 0.5), panel, G);
   const drum = batch(new THREE.CylinderGeometry(0.32, 0.32, 1, 12).rotateZ(Math.PI / 2), darkMetal, G);
   const doors = batch(box(1, 5.1, 0.12), doorMat, G);
-  const tyre = batch(new THREE.CylinderGeometry(0.36, 0.36, 0.38, 20).rotateZ(Math.PI / 2), tyreMat, G);
-  const blanket = batch(new THREE.CylinderGeometry(0.37, 0.37, 0.32, 20).rotateZ(Math.PI / 2), teamMat, G);
+  // 轮胎：带轮辋与胎壁配方色带的贴图（软 / 中 / 硬三种）；保温毯：带缝线与绑带的布面，按队色染色
+  const rackTyreMat = std('#ffffff', { map: tyreTex(), roughness: 0.82 }, 0.12);
+  const tyres = [0, 1, 2].map((i) => batch(tyreGeo(i).rotateZ(Math.PI / 2), rackTyreMat, G));
+  const blanketMat = floodlit(new THREE.MeshStandardMaterial({ map: blanketTex(), roughness: 0.8 }), 0.5);
+  const blanket = batch(blanketGeo().rotateZ(Math.PI / 2), blanketMat, G);
   const rack = batch(box(0.06, 1, 0.06), steel, G);
   const rackBar = batch(box(0.05, 0.05, 1), steel, G);
   // 工具车：抽屉纹理 + 队色框
@@ -219,21 +225,12 @@ export function buildPitBuilding(scene, brand = null) {
   });
   const trolley = batch(box(0.9, 1.0, 0.6).translate(0, 0.55, 0), floodlit(new THREE.MeshStandardMaterial({ map: drawerTex, roughness: 0.45, metalness: 0.3 }), 0.4), G);
   const trolleyTop = batch(box(0.94, 0.04, 0.64), steel, G);
-  // 遥测屏
-  const teleTex = canvasTex(256, 160, (c, w, h) => {
-    c.fillStyle = '#081221'; c.fillRect(0, 0, w, h);
-    c.strokeStyle = 'rgba(80,120,170,0.25)'; c.lineWidth = 1;
-    for (let x = 0; x < w; x += 16) { c.beginPath(); c.moveTo(x, 18); c.lineTo(x, h); c.stroke(); }
-    for (let y = 18; y < h; y += 14) { c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke(); }
-    c.fillStyle = '#1d3b66'; c.fillRect(0, 0, w, 14);
-    ['#3ad1ff', '#ffcf3a', '#ff5a6e', '#7dff8a'].forEach((col, k) => {
-      c.strokeStyle = col; c.lineWidth = 1.6; c.beginPath();
-      for (let x = 0; x <= w; x += 4) { const y = 40 + k * 28 + Math.sin(x * 0.05 + k) * 10 + Math.sin(x * 0.13 + k * 2) * 5; if (x) c.lineTo(x, y); else c.moveTo(x, y); }
-      c.stroke();
-    });
-  });
-  const teleMat = new THREE.MeshStandardMaterial({ map: teleTex, emissive: '#ffffff', emissiveMap: teleTex, emissiveIntensity: 0.9, roughness: 0.3 });
-  const screens = batch(new THREE.PlaneGeometry(0.88, 0.53), teleMat, G);
+  // 屏幕：四种专业界面（遥测 / 计时榜 / 赛道图 / 车辆状态）共用一张图集
+  const teleTex = screenAtlas(TEAMS, TRACK_POINTS);
+  const teleMat = new THREE.MeshStandardMaterial({ map: teleTex, emissive: '#ffffff', emissiveMap: teleTex, emissiveIntensity: 0.95, roughness: 0.3 });
+  const screenB = [0, 1, 2, 3].map((i) => batch(screenGeo(i), teleMat, G));
+  const bigScreenB = [0, 1, 2, 3].map((i) => batch(screenGeo(i, 1.5, 0.9), teleMat, G));
+  const bigBack = batch(box(1.58, 0.98, 0.06), darkMetal, G);
   const screenBack = batch(box(0.94, 0.59, 0.05), darkMetal, G);
   const desk = batch(box(0.8, 0.05, 3.2), std('#e6e8eb', { roughness: 0.5 }, 0.15), G);
   const deskLeg = batch(box(0.05, 0.75, 0.05), darkMetal, G);
@@ -241,15 +238,28 @@ export function buildPitBuilding(scene, brand = null) {
   const gantryBeam = batch(box(1, 0.18, 0.25), darkMetal, G);
   const hanger = batch(box(0.03, 1, 0.03), steel, G);
   const tray = batch(box(0.4, 0.08, 1), darkMetal, G);
-  const hose = batch(new THREE.CylinderGeometry(0.025, 0.025, 1, 6), floodlit(new THREE.MeshStandardMaterial({ roughness: 0.6 }), 0.4), G);
+  const hose = batch(hoseGeo(), floodlit(new THREE.MeshStandardMaterial({ roughness: 0.6 }), 0.4), G);
+  const jack = batch(jackGeo(), darkMetal, G);
   const floorLine = batch(box(1, 0.012, 1), floodlit(new THREE.MeshStandardMaterial({ roughness: 0.5 }), 0.4), G);
-  // 技师：队服（躯干、手臂、帽子）/ 深色裤子与鞋 / 头和手
-  const shirtGeo = mergeGeometries([box(0.42, 0.6, 0.24).translate(0, 1.2, 0), box(0.11, 0.55, 0.12).translate(0.27, 1.17, 0), box(0.11, 0.55, 0.12).translate(-0.27, 1.17, 0), new THREE.CylinderGeometry(0.115, 0.12, 0.08, 10).translate(0, 1.72, 0)]);
-  const legsGeo = mergeGeometries([box(0.16, 0.86, 0.18).translate(0.1, 0.45, 0), box(0.16, 0.86, 0.18).translate(-0.1, 0.45, 0), box(0.16, 0.08, 0.28).translate(0.1, 0.04, 0.04), box(0.16, 0.08, 0.28).translate(-0.1, 0.04, 0.04)]);
-  const skinGeo = mergeGeometries([new THREE.SphereGeometry(0.11, 10, 8).translate(0, 1.6, 0), new THREE.SphereGeometry(0.05, 6, 4).translate(0.27, 0.87, 0), new THREE.SphereGeometry(0.05, 6, 4).translate(-0.27, 0.87, 0)]);
-  const shirts = batch(shirtGeo, teamMat, G);
-  const legs = batch(legsGeo, std('#1c1d21', { roughness: 0.8 }, 0.08), G);
-  const skin = batch(skinGeo, std('#d9a882', { roughness: 0.7 }, 0.2), G);
+  // 技师：队服（按队色）+ 裤、鞋、耳机、皮肤；站立 / 俯身作业 / 坐在工作台前三种姿态
+  const crewShirtMat = floodlit(new THREE.MeshStandardMaterial({ roughness: 0.85 }), 0.4);
+  const crewRestMat = floodlit(new THREE.MeshStandardMaterial({ roughness: 0.75, vertexColors: true }), 0.3);
+  const crewB = {};
+  for (const pose of ['stand', 'work', 'sit']) { const g = crewGeo(pose); crewB[pose] = { shirt: batch(g.shirt, crewShirtMat, G), rest: batch(g.rest, crewRestMat, G) }; }
+  const SKINS = ['#f3d2b4', '#e8bc96', '#d29f78', '#a8714d', '#7a4e33'];
+  // 烘焙明暗的地面 / 天花 / 侧墙（每队一块），以及物体脚下的软阴影
+  const teamW = bayW * 3 - 0.25;
+  const gFloor = batch(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), std('#ffffff', { map: garageFloorTex(teamW, GD, bayW), roughness: 0.32 }, 0.35), G);
+  const gCeil = batch(new THREE.PlaneGeometry(1, 1).rotateX(Math.PI / 2), std('#ffffff', { map: garageCeilTex(teamW, GD, bayW), roughness: 0.9 }, 0.5), G);
+  const gWall = batch(new THREE.PlaneGeometry(1, 1), std('#ffffff', { map: garageWallTex(), roughness: 0.55 }, 0.4), G);
+  const blob = batch(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: blobTex(), color: '#000000', transparent: true, opacity: 0.55, depthWrite: false }), G);
+  const shade = (x, z, sx, sz) => blob.add(x, 0.152, z, sx, 1, sz);
+  const person = (pose, x, z, ry, color) => {
+    const h = pose === 'sit' ? 1 : 0.94 + rand() * 0.1;
+    crewB[pose].shirt.add(x, 0.12, z, h, h, h, ry, color);
+    crewB[pose].rest.add(x, 0.12, z, h, h, h, ry, SKINS[Math.floor(rand() * SKINS.length)]);
+    shade(x, z, 1.0, 1.0);
+  };
   // 赛车：与赛道上同一套精细模型，按材质分组实例化，逐车设置涂装颜色
   const carGeo = f1CarGeometry();
   const white0 = () => floodlit(new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.32, metalness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.15 }), 0.5);
@@ -270,7 +280,7 @@ export function buildPitBuilding(scene, brand = null) {
   const dir = plusIsEntry ? -1 : 1;
   for (let k = 0; k < nB; k++) {
     const team = TEAMS[Math.floor(k / 3)];
-    if (!team) { doors.add(bayX(k), 2.6, 0.35, bayW - 0.7, 1, 1); for (const lz of [3, 7, 11]) lights.add(bayX(k), 5.55, lz); continue; } // 备用车库：关闭
+    if (!team) { if (k === TEAMS.length * 3) partition.add(bayX(k) - dir * bayW / 2, 2.8, GD / 2, 1, 1, 1); doors.add(bayX(k), 2.6, 0.35, bayW - 0.7, 1, 1); for (const lz of [3, 7, 11]) lights.add(bayX(k), 5.55, lz); continue; } // 备用车库：关闭
     const [c0, c1, c2] = team.livery || [team.color, '#1b1b1f', team.color];
     const color = team.color;
     const cx = bayX(k);
@@ -290,12 +300,20 @@ export function buildPitBuilding(scene, brand = null) {
       wall.rotation.y = Math.PI; // 面朝车库门（局部 -z）
       wall.position.set(bayX(k + 1), 2.75, GD - 0.04);
       G.add(wall);
+      // 地面、天花与两侧展板墙（烘焙了灯下亮斑与墙根暗角），侧墙上一道队色腰线
+      const mid = bayX(k + 1);
+      gFloor.add(mid, 0.13, GD / 2, teamW, 1, GD);
+      gCeil.add(mid, 5.592, GD / 2, teamW, 1, GD);
+      for (const e of [-1, 1]) {
+        gWall.add(mid + e * (bayW * 1.5 - 0.14), 2.85, GD / 2 + 0.1, GD - 0.4, 5.4, 1, -e * Math.PI / 2);
+        floorLine.add(mid + e * (bayW * 1.5 - 0.15), 2.2, GD / 2 + 0.1, 0.03, 20, GD - 0.5, 0, color);
+      }
     }
     for (const lz of [3, 7, 11]) for (const lx of [-2.2, 2.2]) lights.add(cx + lx, 5.55, lz);
     for (const lx of [-2.9, 2.9]) tray.add(cx + lx, 5.4, GD / 2, 1, 1, GD - 1);
     drum.add(cx, 5.3, 0.65, w, 1, 1);
     // 地面工作区标线（队色）
-    for (const [fx, fz, sx, sz] of [[0, 1.4, w - 1.2, 0.08], [0, GD - 2.2, w - 1.2, 0.08], [-(w - 1.2) / 2, (GD - 0.8) / 2, 0.08, GD - 3.6], [(w - 1.2) / 2, (GD - 0.8) / 2, 0.08, GD - 3.6]]) floorLine.add(cx + fx, 0.13, fz, sx, 1, sz, 0, color);
+    for (const [fx, fz, sx, sz] of [[0, 1.4, w - 1.2, 0.08], [0, GD - 2.2, w - 1.2, 0.08], [-(w - 1.2) / 2, (GD - 0.8) / 2, 0.08, GD - 3.6], [(w - 1.2) / 2, (GD - 0.8) / 2, 0.08, GD - 3.6]]) floorLine.add(cx + fx, 0.138, fz, sx, 1, sz, 0, color);
     // 轮胎架（两侧，三层，套着队色轮胎保温毯）
     for (const side of [-1, 1]) {
       const rx = cx + side * (w / 2 - 0.55);
@@ -303,8 +321,10 @@ export function buildPitBuilding(scene, brand = null) {
       for (let lv = 0; lv < 3; lv++) rackBar.add(rx, 0.12 + lv * 0.85, 5.6, 1, 1, 4.9);
       for (let lv = 0; lv < 3; lv++) for (const tz of [3.7, 4.5, 5.3, 6.1, 6.9, 7.7]) {
         if (rand() < 0.2) continue;
-        (lv === 0 ? tyre : blanket).add(rx, 0.5 + lv * 0.85, tz, 1, 1, 1, 0, lv === 0 ? null : color);
+        if (lv === 0) tyres[(k + (side > 0 ? 1 : 0)) % 3].add(rx, 0.5, tz);
+        else blanket.add(rx, 0.5 + lv * 0.85, tz, 1, 1, 1, 0, color);
       }
+      shade(rx, 5.5, 1.3, 5.8);
     }
     if (k % 3 !== 1) {
       // 赛车：车头朝维修通道（局部 -z）
@@ -312,31 +332,40 @@ export function buildPitBuilding(scene, brand = null) {
         const col = key === 'paint' ? c0 : key === 'secondary' ? c1 : key === 'accent' ? c2 : key === 'stripe' ? color : null;
         bb.add(cx, 0.13, 6.8, 1, 1, 1, Math.PI, col);
       }
+      shade(cx, 6.8, 2.7, 6.6);
+      // 前后千斤顶
+      jack.add(cx, 0.12, 3.55); jack.add(cx, 0.12, 9.75, 1, 1, 1, Math.PI);
       // 头顶数据屏吊架（面向车头）
       gantryBeam.add(cx, 3.35, 3.0, w - 2, 1, 1);
       for (const hx of [-(w - 2) / 2 + 0.3, (w - 2) / 2 - 0.3]) hanger.add(cx + hx, 4.45, 3.0, 1, 2.1, 1);
-      for (const dx of [-1.9, -0.95, 0, 0.95, 1.9]) { screenBack.add(cx + dx, 2.95, 3.03); screens.add(cx + dx, 2.95, 2.995, 1, 1, 1, Math.PI); }
-      // 风炮气管：从天花垂到四个车轮附近
-      for (const [hx, hz] of [[-0.9, 5.0], [0.9, 5.0], [-0.9, 8.6], [0.9, 8.6]]) hose.add(cx + hx, 3.6, hz, 1, 3.8, 1, 0, rand() < 0.5 ? '#e10600' : '#ffcc00');
-      // 工具车
-      for (const dx of [-2.6, 2.6]) { trolley.add(cx + dx, 0.12, 11.6, 1, 1, 1, 0, c0); trolleyTop.add(cx + dx, 1.19, 11.6); }
+      [-1.9, -0.95, 0, 0.95, 1.9].forEach((dx, i) => { screenBack.add(cx + dx, 2.95, 3.03); screenB[[1, 0, 2, 0, 3][i]].add(cx + dx, 2.95, 2.995, 1, 1, 1, Math.PI); });
+      // 风炮气管：从天花垂到四个车轮旁，末端挂着风炮
+      for (const [hx, hz] of [[-1.3, 5.6], [1.3, 5.6], [-1.3, 8.0], [1.3, 8.0]]) hose.add(cx + hx, 5.5, hz, 1, 1, 1, hx < 0 ? Math.PI : 0, rand() < 0.5 ? '#e10600' : '#ffcc00');
+      // 工具车：车尾两侧各一台，背墙前一排
+      for (const dx of [-2.6, 2.6]) { trolley.add(cx + dx, 0.12, 11.6, 1, 1, 1, 0, c0); trolleyTop.add(cx + dx, 1.19, 11.6); shade(cx + dx, 11.6, 1.3, 1.0); }
+      for (const dx of [-1.5, -0.5, 0.5, 1.5]) { trolley.add(cx + dx, 0.12, GD - 0.5, 1, 1, 1, Math.PI, c0); trolleyTop.add(cx + dx, 1.19, GD - 0.5); }
+      shade(cx, GD - 0.6, 4.6, 1.4);
+      // 技师：一人俯身在前轮旁，一人站在车尾工具车边，偶尔还有一人在门口看屏幕
+      const sd = rand() < 0.5 ? -1 : 1;
+      if (rand() < 0.85) person('work', cx + sd * 1.62, 4.75, -sd * Math.PI / 2, color);
+      if (rand() < 0.7) person('stand', cx - sd * 1.9, 10.5, Math.PI + (rand() - 0.5) * 1.2, color);
+      if (rand() < 0.4) person('stand', cx - sd * 2.7, 1.7, (rand() - 0.5) * 0.6, color);
     } else {
-      // 中间开间：两侧工程师工作台（各 3 块遥测屏、2 把椅子）
+      // 中间开间：两侧工程师工作台（各 3 块屏、2 把椅子，工程师坐在台前）
       for (const side of [-1, 1]) {
         const dx = cx + side * (w / 2 - 1.1);
         desk.add(dx, 0.78, 7.0);
+        shade(dx - side * 0.3, 7.0, 2.0, 3.8);
         for (const lz of [5.6, 8.4]) deskLeg.add(dx, 0.4, lz);
-        for (const sz of [5.9, 7.0, 8.1]) { screenBack.add(dx + side * 0.28, 1.15, sz, 1, 1, 1, Math.PI / 2); screens.add(dx + side * 0.25, 1.15, sz, 1, 1, 1, -side * Math.PI / 2); }
-        for (const cz of [6.2, 7.8]) chair.add(dx - side * 0.75, 0.12, cz, 1, 1, 1, side * Math.PI / 2);
+        [5.9, 7.0, 8.1].forEach((sz, i) => { screenBack.add(dx + side * 0.28, 1.15, sz, 1, 1, 1, Math.PI / 2); screenB[(i + (side > 0 ? 0 : 2)) % 4].add(dx + side * 0.25, 1.15, sz, 1, 1, 1, -side * Math.PI / 2); });
+        for (const cz of [6.2, 7.8]) {
+          chair.add(dx - side * 0.75, 0.12, cz, 1, 1, 1, -side * Math.PI / 2);   // 椅背在外、面朝工作台
+          if (rand() < 0.75) person('sit', dx - side * 0.75, cz, side * Math.PI / 2, color);
+        }
       }
-      // 背墙前的一排大屏
-      for (const dx of [-1.9, -0.65, 0.65, 1.9]) { screenBack.add(cx + dx, 2.4, GD - 0.4); screens.add(cx + dx, 2.4, GD - 0.43, 1, 1, 1, Math.PI); }
-    }
-    // 技师（2–3 人，队服）
-    const nP = 2 + Math.floor(rand() * 2);
-    for (let i = 0; i < nP; i++) {
-      const px = cx + (rand() - 0.5) * 6, pz = 2 + rand() * 10, ry = rand() * Math.PI * 2;
-      shirts.add(px, 0.12, pz, 1, 1, 1, ry, color); legs.add(px, 0.12, pz, 1, 1, 1, ry); skin.add(px, 0.12, pz, 1, 1, 1, ry);
+      // 背墙前的一排大屏，偶尔有人站着看
+      [-2.5, -0.85, 0.85, 2.5].forEach((dx, i) => { bigBack.add(cx + dx, 2.5, GD - 0.4); bigScreenB[[2, 1, 0, 3][i]].add(cx + dx, 2.5, GD - 0.44, 1, 1, 1, Math.PI); });
+      if (rand() < 0.7) person('stand', cx + (rand() - 0.5) * 2.4, GD - 2.6, (rand() - 0.5) * 0.5, color);
     }
   }
   // 屋面设备
@@ -346,7 +375,13 @@ export function buildPitBuilding(scene, brand = null) {
   const down = batch(new THREE.CylinderGeometry(0.18, 0.18, 0.05, 10), lampMat('#ffffff', '#fff3d6', 3), G);
   for (let x = -L / 2 + 2; x < L / 2; x += 3.2) down.add(x, 11.6, -0.6);
 
-  for (const b of [pier, mull, partition, lights, drum, doors, tyre, blanket, rack, rackBar, trolley, trolleyTop, screens, screenBack, desk, deskLeg, chair, gantryBeam, hanger, tray, hose, floorLine, shirts, legs, skin, ...Object.values(carB), hvac, down, strut]) G.add(b.build());
+  for (const b of [pier, mull, partition, lights, drum, doors, hvac, down, strut]) G.add(b.build());
+  // 车库内部的小件：镜头离维修楼较远时整体隐藏（细节层级），近处才画
+  const detail = [...tyres, blanket, rack, rackBar, trolley, trolleyTop, ...screenB, ...bigScreenB, bigBack, screenBack, desk, deskLeg, chair, gantryBeam, hanger, tray, hose, jack, floorLine,
+    ...Object.values(crewB).flatMap((c) => [c.shirt, c.rest]), ...Object.values(carB)].map((b) => b.build());
+  detail.forEach((m) => G.add(m));
+  for (const b of [gFloor, gCeil, gWall, blob]) G.add(b.build(false));   // 地面、天花、侧墙、软阴影：不投影
+  G.children[G.children.length - 1].renderOrder = 1;
   // 让实例矩阵已含 G 的变换：把这些实例放到场景根节点下
   const inst = G.children.filter((c) => c.isInstancedMesh);
   inst.forEach((c) => G.remove(c));
@@ -359,7 +394,7 @@ export function buildPitBuilding(scene, brand = null) {
   const gPost = batch(box(0.18, 4.4, 0.18), darkMetal, G);
   const gBeam = batch(box(1, 0.35, 0.35), darkMetal, G);
   const gLight = batch(box(1, 0.12, 0.25), panel, G);
-  const stackT = batch(new THREE.CylinderGeometry(0.37, 0.37, 0.34, 14), teamMat, G);
+  const stackT = batch(blanketGeo(), blanketMat, G);
   for (let t = 0; t < TEAMS.length && t * 3 + 2 < nB; t++) {
     const color = TEAMS[t].color;
     for (const cx of [bayX(t * 3), bayX(t * 3 + 2)]) {
@@ -375,7 +410,7 @@ export function buildPitBuilding(scene, brand = null) {
     gBeam.add(cx, 4.35, bz, 0.35, 1, 7.6);
     gLight.add(cx, 4.1, bz - 1.2, 3.2, 1, 1); gLight.add(cx, 4.1, bz + 1.2, 3.2, 1, 1);
     // 轮胎堆（套着轮胎保温毯）
-    for (const sx of [-4.2, 4.2]) for (let h = 0; h < 4; h++) stackT.add(cx + sx, 0.2 + h * 0.36, -0.9, 1, 1, 1, 0, h % 2 ? color : '#1b1c1f');
+    for (const sx of [-4.2, 4.2]) for (let h = 0; h < 4; h++) stackT.add(cx + sx, 0.32 + h * 0.375, -0.9, 1, 1, 1, h * 1.3, h % 2 ? color : '#2a2b30');
     }
   }
   const pitItems = [marks, marksTeam, gPost, gBeam, gLight, stackT].map((b) => b.build());
@@ -396,5 +431,6 @@ export function buildPitBuilding(scene, brand = null) {
   scene.add(G);
   inst.forEach((c) => scene.add(c));
   pitItems.forEach((c) => scene.add(c));
-  return { group: G, glass, front: V(P.front[0], P.front[1]), f, L, bayX, nB, toWorld: (x, z) => new THREE.Vector3(x, 0, z).applyMatrix4(G.matrixWorld) };
+  const axis = new THREE.Line3(endMinus.clone().setY(2), endPlus.clone().setY(2));
+  return { group: G, glass, detail, axis, front: V(P.front[0], P.front[1]), f, L, bayX, nB, toWorld: (x, z) => new THREE.Vector3(x, 0, z).applyMatrix4(G.matrixWorld) };
 }

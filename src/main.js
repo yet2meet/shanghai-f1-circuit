@@ -87,6 +87,7 @@ await step(0.6, tr('搭建维修区与围场', 'Building the pit lane and paddoc
 // 可选的授权素材清单（public/brand/manifest.json），没有则使用文字名称牌
 const brand = await fetch('./brand/manifest.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
 const pitb = buildPitBuilding(scene, brand);
+const _pitP = new THREE.Vector3();
 const venue = buildVenue(scene, track, pitb);
 await step(0.68, tr('加载周边道路、水系与建筑', 'Loading roads, water and buildings'));
 const osm = buildOSM(scene);
@@ -740,6 +741,10 @@ function tick(dt) {
     const near = camera.position.distanceTo(s.center) < 280 + s.L * 0.5 || state.stand === s;
     s.mesh.visible = near; s.carpet.visible = !near;
   }
+  // 车库内部细节：离维修楼 260 m 以内才画（主看台、维修区都在范围内）
+  pitb.axis.closestPointToPoint(camera.position, true, _pitP);
+  const pitNear = camera.position.distanceTo(_pitP) < 260;
+  if (pitb.detail[0].visible !== pitNear) for (const m of pitb.detail) m.visible = pitNear;
   if (pointer && !fly && !down?.dragging) pick(pointer.x, pointer.y);
   cars.update(dt);
   karting.update(dt);
