@@ -39,12 +39,16 @@ async function makePoster(snapshot) {
   for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (qr.isDark(r, col)) g.fillRect(qx + col * cell, qy + r * cell, Math.ceil(cell), Math.ceil(cell));
   g.fillStyle = '#1d1d1f'; g.font = font(700, 40);
   g.fillText(isEn() ? 'Scout your seat before race day' : '开赛前，先来踩个点', 72, 1236, 700);
-  g.fillStyle = 'rgba(60,60,67,0.75)'; g.font = font(500, 28);
-  const lines = isEn()
-    ? ['From the main grandstand to the Turn 14 hairpin — try any seat', 'Day or night, model or satellite, one tap', wechat ? 'Long-press the QR code to step in' : 'Scan to step in']
-    : ['从主看台到 14 号发卡弯，哪个座位都能坐上去看看', '白天黑夜随手切，卫星图一键对上', wechat ? '长按识别二维码，进场' : '扫码进场'];
-  lines.forEach((s, i) => g.fillText(s, 72, 1288 + i * 40, 700));
-  g.fillStyle = 'rgba(60,60,67,0.45)'; g.font = font(500, 24); g.fillText('shanghai-f1-circuit.pages.dev  ·  © 2026 yet2meet', 72, 1418);
+  // 两行说明等长（各 13 字），行动号召做成红色胶囊，长短对比是有意的
+  g.fillStyle = 'rgba(60,60,67,0.75)'; g.font = font(500, 29);
+  const lines = isEn() ? ['Try any seat before you go', 'Day, night or satellite view'] : ['每个座位，都能先坐上去看看', '白天黑夜，卫星实景，一键切换'];
+  lines.forEach((s, i) => g.fillText(s, 72, 1290 + i * 42, 660));
+  const cta = isEn() ? (wechat ? 'Long-press to step in  →' : 'Scan to step in  →') : (wechat ? '长按识别 · 进场  →' : '扫码进场  →');
+  g.font = font(700, 26);
+  const cw = g.measureText(cta).width + 44;
+  g.fillStyle = '#e10600'; rr(g, 72, 1352, cw, 50, 25); g.fill();
+  g.fillStyle = '#fff'; g.fillText(cta, 94, 1386);
+  g.fillStyle = 'rgba(60,60,67,0.45)'; g.font = font(500, 21); g.fillText('shanghai-f1-circuit.pages.dev  ·  © 2026 yet2meet', 72, 1430);
   return c;
 }
 
