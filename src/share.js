@@ -38,12 +38,12 @@ async function makePoster(snapshot) {
   g.fillStyle = '#1d1d1f';
   for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (qr.isDark(r, col)) g.fillRect(qx + col * cell, qy + r * cell, Math.ceil(cell), Math.ceil(cell));
   g.fillStyle = '#1d1d1f'; g.font = font(700, 40);
-  g.fillText(isEn() ? 'Explore the circuit in 3D' : '在浏览器里逛赛车场', 72, 1236);
+  g.fillText(isEn() ? 'Scout your seat before race day' : '开赛前，先来踩个点', 72, 1236, 700);
   g.fillStyle = 'rgba(60,60,67,0.75)'; g.font = font(500, 28);
   const lines = isEn()
-    ? ['Grandstands & prices · seat views', 'Satellite view · day & night', 'Scan the QR code to open']
-    : ['看台与官方票价 · 座位视角', '卫星图 · 白天 / 黑夜', wechat ? '长按识别二维码即可打开' : '扫码即可打开'];
-  lines.forEach((s, i) => g.fillText(s, 72, 1288 + i * 40));
+    ? ['From the main grandstand to the Turn 14 hairpin — try any seat', 'Day or night, model or satellite, one tap', wechat ? 'Long-press the QR code to step in' : 'Scan to step in']
+    : ['从主看台到 14 号发卡弯，哪个座位都能坐上去看看', '白天黑夜随手切，卫星图一键对上', wechat ? '长按识别二维码，进场' : '扫码进场'];
+  lines.forEach((s, i) => g.fillText(s, 72, 1288 + i * 40, 700));
   g.fillStyle = 'rgba(60,60,67,0.45)'; g.font = font(500, 24); g.fillText('shanghai-f1-circuit.pages.dev  ·  © 2026 yet2meet', 72, 1418);
   return c;
 }
