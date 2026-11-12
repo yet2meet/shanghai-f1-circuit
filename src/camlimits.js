@@ -54,7 +54,7 @@ export function buildCamLimits(stands) {
   // 看台：坡面（前沿低、后排高）；款待区 / 维修楼按实心盒子
   for (const s of stands) for (const part of s.parts || []) {
     const { front, f, L, D } = part, Hh = part.H || 0;
-    if (!D || !Hh) continue;
+    if (!D || !Hh || part.noLimits) continue;
     const rx = -f.z, rz = f.x;  // 沿看台长度方向
     const flat = s.spec.type === 'club';
     const pad = 1.5, back = 6;  // 看台背后的立面楼梯、框架向外凸出约 5 m

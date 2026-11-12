@@ -82,7 +82,7 @@ const step = (p, text) => {
 await step(0.3, tr('铺设赛道', 'Laying the track'));
 const track = buildTrack(scene);
 await step(0.45, tr('搭建看台与座位', 'Building grandstands and seats'));
-const { stands, hitboxes } = buildStands(scene);
+const { stands, hitboxes } = buildStands(scene, track);
 await step(0.6, tr('搭建维修区与围场', 'Building the pit lane and paddock'));
 // 可选的授权素材清单（public/brand/manifest.json），没有则使用文字名称牌
 const brand = await fetch('./brand/manifest.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);

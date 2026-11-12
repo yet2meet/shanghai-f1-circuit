@@ -855,7 +855,62 @@ function addGrassFans(g, part, spec) {
 }
 
 /** 看台轮廓：OSM 中有的直接用；没有的（C 草地）用 data.js 里按卫星影像描出的轮廓 */
-const outlineOf = (spec) => (spec.outline ? [spec.outline] : OSM_STANDS[spec.id]);
+let TRACK = null;
+const outlineOf = (spec) => (spec.outline ? [spec.outline.alongTrack ? outlineAlongTrack(spec.outline) : spec.outline] : OSM_STANDS[spec.id]);
+/**
+ * 沿赛道生成草坡轮廓：内沿 = 赛道该侧草坪的外缘（逐点读取，所以与草坪严丝合缝），外沿距中线 outer 米。
+ * 起止点用离 from / to 最近的赛道点，再按沿赛道的距离向后跳过 skipStart、向前延伸 extendEnd。ref 用来判定在赛道哪一侧。
+ */
+const ALONG_CACHE = new Map();
+function outlineAlongTrack(o) {
+  if (ALONG_CACHE.has(o)) return ALONG_CACHE.get(o);
+  const a = o.alongTrack, T = TRACK, N = T.N, HWv = 7.5;
+  const near = ([x, n]) => { let b = 0, bd = Infinity; for (let i = 0; i < N; i++) { const d = (T.pts[i].x - x) ** 2 + (T.pts[i].z + n) ** 2; if (d < bd) { bd = d; b = i; } } return b; };
+  const step = T.total / N;
+  const i0 = (near(a.from) + Math.round(a.skipStart / step)) % N, i1 = (near(a.to) + Math.round(a.extendEnd / step)) % N;
+  const idx = []; for (let i = i0; ; i = (i + 1) % N) { idx.push(i); if (i === i1 || idx.length > N) break; }
+  const mid = idx[idx.length >> 1];
+  // 在 ref 那一侧：nor 为行进方向左侧
+  const left = (() => { const p = T.pts[mid], q = T.nor[mid]; return (a.ref[0] - p.x) * q.x + (-a.ref[1] - p.z) * q.z > 0; })();
+  const s = left ? 1 : -1;
+  // 与其他赛段（如蜗牛弯）保持距离：点到“非本段”赛道的距离必须大于那一段的草坪外缘 + 围栏 + 4 m
+  const win = Math.round(120 / step);
+  const clear = (x, z, i) => {
+    for (let j = 0; j < N; j += 2) {
+      const dj = Math.abs(j - i); if (Math.min(dj, N - dj) < win) continue;
+      const need = HWv + 13 + Math.max(T.gwL[j], T.gwR[j]) + 4;
+      if ((T.pts[j].x - x) ** 2 + (T.pts[j].z - z) ** 2 < need * need) return false;
+    }
+    return true;
+  };
+  const rows = [];
+  idx.forEach((i, n) => {
+    const p = T.pts[i], q = T.nor[i];
+    const oi = HWv + 13 + (left ? T.gwL[i] : T.gwR[i]) - 0.6;            // 略压住草坪外缘，避免缝隙
+    if (!clear(p.x + q.x * (oi + 3) * s, p.z + q.z * (oi + 3) * s, i)) return;   // 连内沿都挨着别的赛段：这一截不要
+    const k = idx.length > 1 ? n / (idx.length - 1) : 0;
+    let oo = Math.max(oi + 8, a.outerStart != null ? a.outerStart + (a.outer - a.outerStart) * k : a.outer);
+    while (oo > oi + 4 && !clear(p.x + q.x * oo * s, p.z + q.z * oo * s, i)) oo -= 2;  // 外沿往里收，直到不碰别的赛段
+    rows.push({ p, q, oi, oo });
+  });
+  // 外沿宽度先平滑，再在两端约 45 m 内收成圆弧，避免生硬的斜切角
+  const w = rows.map((r) => r.oo - r.oi), R = 6, taper = Math.max(2, Math.round(45 / step));
+  const inner = [], outer = [];
+  rows.forEach((r, n) => {
+    let acc = 0, cnt = 0, mn = Infinity;
+    for (let j = Math.max(0, n - R); j <= Math.min(rows.length - 1, n + R); j++) { acc += w[j]; cnt++; mn = Math.min(mn, w[j]); }
+    const e = Math.min(1, Math.min(n, rows.length - 1 - n) / taper);
+    const width = Math.min(acc / cnt, mn + 6) * Math.sqrt(1 - (1 - e) * (1 - e));   // 圆弧收口
+    inner.push([r.p.x + r.q.x * r.oi * s, -(r.p.z + r.q.z * r.oi * s)]);
+    if (n > 0 && n < rows.length - 1) outer.push([r.p.x + r.q.x * (r.oi + width) * s, -(r.p.z + r.q.z * (r.oi + width) * s)]);
+  });
+  const poly = [...inner, ...outer.reverse()].flat();
+  const m = T.pts[mid], qm = T.nor[mid], om = HWv + 13 + (left ? T.gwL[mid] : T.gwR[mid]);
+  let L = 0; for (let k = 1; k < inner.length; k++) L += Math.hypot(inner[k][0] - inner[k - 1][0], inner[k][1] - inner[k - 1][1]);
+  const part = { poly, front: [m.x + qm.x * om * s, -(m.z + qm.z * om * s)], f: [-qm.x * s, qm.z * s], L, D: ((a.outerStart ?? a.outer) + a.outer) / 2 - om, h: o.h, noLimits: true };
+  ALONG_CACHE.set(o, part);
+  return part;
+}
 
 function buildGrass(spec, mats, common) {
   const g = new THREE.Group();
@@ -918,7 +973,7 @@ function buildGrass(spec, mats, common) {
   g.add(hb);
   hb.updateMatrixWorld(true);
   common.hitboxes.push(hb);
-  return { g, parts: [{ f, rotY, front: V(part.front[0], part.front[1]), L: part.L, D: part.D, H: 3 }] };
+  return { g, parts: [{ f, rotY, front: V(part.front[0], part.front[1]), L: part.L, D: part.D, H: 3, noLimits: part.noLimits }] };
 }
 
 /** 没有精确轮廓的票区（C 草地）：只放一个可点击的位置标记，不建模 */
@@ -948,7 +1003,8 @@ function buildClub(spec, common) {
   return { g, parts: [{ f, rotY, front: V(part.front[0], part.front[1]), L: part.L, D: part.D, H: part.h ?? 12 }] };
 }
 
-export function buildStands(scene) {
+export function buildStands(scene, track) {
+  TRACK = track;
   const mats = {
     concrete: std('#c4c7cd', { roughness: 0.9 }, 0.2),
     white: std('#c9ced5', { roughness: 0.5, metalness: 0.25 }, 0.18),
