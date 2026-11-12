@@ -175,6 +175,72 @@ function buildFans(spec, parts, mats) {
   return m;
 }
 
+/**
+ * 把相邻的几段看台连成一整条（spec.joinParts）：OSM 里 B1/B2/B3、E1…E11 是分开的轮廓，中间留有几米空隙。
+ * 每对相邻段取最近的两个前沿端点，中间补一段不设座位的阶梯（看台剖面直接拉伸），
+ * 接缝两侧再用看台剖面绕竖轴旋转的扇形补齐转角，整座看台读起来是一道连续的弧。
+ * 需在 buildSeatPart 之前调用：会给被连接的一端打上 join 标记，那一端不再建侧墙。
+ */
+function planJoins(parts) {
+  const ends = (p) => {
+    const { front, rotY } = frameOf(p);
+    const ex = new THREE.Vector3(Math.cos(rotY), 0, -Math.sin(rotY));
+    return [-1, 1].map((s) => ({ s, p: front.clone().addScaledVector(ex, (s * p.L) / 2), rotY }));
+  };
+  const joins = [];
+  for (let i = 1; i < parts.length; i++) {
+    const p0 = parts[i - 1], p1 = parts[i];
+    if (p0.a && p1.a && p0.chain === p1.chain) continue; // 同一弧形段内部已由 buildFans 连接
+    let best = null;
+    for (const e0 of ends(p0)) for (const e1 of ends(p1)) {
+      const d = e0.p.distanceTo(e1.p);
+      if (!best || d < best.d) best = { d, e0, e1 };
+    }
+    if (!best || best.d > 30) continue;
+    (p0.join ||= {})[best.e0.s] = true;
+    (p1.join ||= {})[best.e1.s] = true;
+    joins.push({ p0, p1, ...best });
+  }
+  return joins;
+}
+function buildJoins(spec, joins, mats) {
+  const geos = [], walls = [];
+  const fan = (at, ra, rb, lay) => {
+    let d = rb - ra; d = Math.atan2(Math.sin(d), Math.cos(d));
+    if (Math.abs(d) < 1e-3) return;
+    const g = new THREE.LatheGeometry(lay.prof.map(([z, y]) => new THREE.Vector2(Math.max(0, z), y)), Math.max(2, Math.ceil(Math.abs(d) / 0.08)), d > 0 ? ra : ra + d, Math.abs(d));
+    g.translate(at.x, 0, at.z);
+    geos.push(g.index ? g.toNonIndexed() : g);
+  };
+  for (const { p0, p1, d, e0, e1 } of joins) {
+    const lay = layoutRows(spec, p0.D <= p1.D ? p0 : p1); // 取较浅的一段的剖面，避免补块从后墙穿出
+    if (d < 0.5) { fan(e0.p, e0.rotY, e1.rotY, lay); continue; }
+    // 中间的连接段：前沿从 e0 到 e1，朝向两段朝向的平均（朝赛道一侧）
+    const dir = e1.p.clone().sub(e0.p).normalize();
+    const f0 = frameOf(p0).f, f1 = frameOf(p1).f;
+    const fb = new THREE.Vector3(dir.z, 0, -dir.x);
+    if (fb.dot(f0.clone().add(f1)) < 0) fb.negate();
+    const rb = Math.atan2(-fb.x, -fb.z);
+    const mid = e0.p.clone().add(e1.p).multiplyScalar(0.5);
+    const m4 = new THREE.Matrix4().compose(mid, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rb), new THREE.Vector3(1, 1, 1));
+    const body = extrudeProfile(lay.prof, d).applyMatrix4(m4);
+    geos.push(body.index ? body.toNonIndexed() : body);
+    const wall = new THREE.BoxGeometry(d, lay.H + 1.4, 0.4).translate(0, (lay.H + 1.4) / 2, lay.D - 0.2).applyMatrix4(m4);
+    walls.push(wall.index ? wall.toNonIndexed() : wall);
+    fan(e0.p, e0.rotY, rb, lay);
+    fan(e1.p, rb, e1.rotY, lay);
+  }
+  const g = new THREE.Group();
+  if (geos.length) {
+    const m = new THREE.Mesh(mergeGeometries(geos), mats.concrete.clone());
+    m.material.side = THREE.DoubleSide;
+    m.castShadow = m.receiveShadow = true;
+    g.add(m);
+  }
+  if (walls.length) { const w = new THREE.Mesh(mergeGeometries(walls), mats.white); w.castShadow = true; g.add(w); }
+  return g;
+}
+
 function buildSeatPart(spec, part, pi, ctx) {
   const { mats, seats, base, rot, partOf, blocks, blockMap } = ctx;
   const { front, f, rotY } = frameOf(part);
@@ -206,6 +272,7 @@ function buildSeatPart(spec, part, pi, ctx) {
   // 两端侧墙（弧形看台内部的接缝处不要侧墙，由扇形填充连起来）
   for (const sx of [-1, 1]) {
     if (part.a && ((sx < 0 && !part.first) || (sx > 0 && !part.last))) continue;
+    if (part.join?.[sx]) continue; // 与相邻看台连成一体的一端
     const side = new THREE.Mesh(extrudeProfile(lay.prof, 0.35), mats.white);
     side.position.x = sx * (L / 2 + 0.17);
     side.castShadow = true;
@@ -423,8 +490,10 @@ function buildSeatStand(spec, mats, seatGeo, common) {
     rails: railBatcher(mats.steel), glassPanels: [], nosing: [], carpet: [], extra: [], hitboxes: common.hitboxes, hitMat: common.hitMat, colorMat: common.colorMat,
   };
   const parts = spec.curve ? curveParts(OSM_STANDS[spec.id]) : OSM_STANDS[spec.id];
+  const joins = spec.joinParts ? planJoins(parts) : [];
   parts.forEach((part, pi) => g.add(buildSeatPart(spec, part, pi, ctx)));
   if (spec.curve) g.add(buildFans(spec, parts, mats));
+  if (joins.length) g.add(buildJoins(spec, joins, mats));
   g.add(ctx.rails.build());
   ctx.extra.forEach((m) => g.add(m));
   // 栏杆玻璃面板（合并成一个网格）

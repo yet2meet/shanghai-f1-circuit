@@ -65,6 +65,7 @@ export const STANDS = [
   },
   {
     id: 'H', code: 'H', name: 'H 看台', nameEn: 'Grandstand H', type: 'seats', color: '#6f4ba3',
+    curve: true, // OSM 轮廓沿弯道弯曲：按弧形逐段排座，段间扇形补齐，连续成一道弧
     roofBottom: 18,
     turns: '1.2 km 长直道末端 · 14 号发卡弯刹车区', turnsEn: 'End of the 1.2 km back straight · Turn 14 braking zone',
     gate: '9 号门', gateEn: 'Gate 9',
@@ -76,6 +77,7 @@ export const STANDS = [
   },
   {
     id: 'K', code: 'K', name: 'K 看台', nameEn: 'Grandstand K', type: 'seats', color: '#6f4ba3',
+    curve: true, // 同 H：连续弧形
     roofBottom: 18,
     turns: '长直道末端 · 14 号发卡弯', turnsEn: 'End of back straight · Turn 14 hairpin',
     gate: '1 号门', gateEn: 'Gate 1',
@@ -94,6 +96,7 @@ export const STANDS = [
     base: 1.2, height: 7.5,
     // 2026 年升级改造后“可容纳 4000 余名观众”（上海市国资委 2026-03-13 通稿），OSM 轮廓排满会多出一倍多，按此限制排数
     maxRows: 7, // 7 排 ≈ 4300 座
+    joinParts: true, // E1…E11 连成一整道弧（段间空隙补成不设座位的阶梯，座位数不变）
     tiers: [{ zone: 'e' }],
     zones: { e: { name: 'E', color: '#e3dc3d', price: 1580, day: null, note: '仅售三日票', noteEn: '3-day pass only' } },
   },
