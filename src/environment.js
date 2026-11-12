@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { V, rng, std, floodlit, lampMat, canvasTex } from './util.js';
 import { HW } from './track.js';
+import { TRUE_NORTH } from './track-data.js';
 
 const CENTER = V(-200, -20);
 
@@ -145,9 +146,17 @@ export function buildEnvironment(scene, track, stands, renderer) {
 }
 
 const C = (h) => new THREE.Color(h);
+// 白天的太阳：按正赛发车时刻（3 月中旬 15:00，北纬 31.3°）算出的真实方位 —— 高度角约 37°、方位角约 240°（西南偏西）。
+// 场景坐标由 TRUE_NORTH 换算：北 N、东 E = (N.n, -N.x)，水平方向 = cos(az)·N + sin(az)·E。
+const sunAt = (azDeg, elDeg) => {
+  const az = (azDeg * Math.PI) / 180, el = (elDeg * Math.PI) / 180;
+  const [nx, nn] = TRUE_NORTH, ex = nn, en = -nx;
+  const hx = Math.cos(az) * nx + Math.sin(az) * ex, hn = Math.cos(az) * nn + Math.sin(az) * en;
+  return V(hx * Math.cos(el), hn * Math.cos(el), Math.sin(el)).multiplyScalar(2000);
+};
 const DAY = {
-  top: C('#2f86e0'), bottom: C('#cfe6f7'), sun: C('#fff3dc'), hemiSky: C('#d6eaff'), hemiGround: C('#6f7d58'),
-  sunPos: new THREE.Vector3(900, 1500, 700),
+  top: C('#2f86e0'), bottom: C('#cfe6f7'), sun: C('#fff0d6'), hemiSky: C('#cfe4ff'), hemiGround: C('#7a7560'),
+  sunPos: sunAt(240, 37),
 };
 const NIGHT = {
   top: C('#02040c'), bottom: C('#111d38'), sun: C('#8fb0ff'), hemiSky: C('#22355e'), hemiGround: C('#06080d'),
@@ -164,22 +173,31 @@ export function applyTime(env, scene, t) {
   env.skyU.bottom.value.lerp(C('#ff9a5c'), dusk * 0.55);
   scene.fog.color.copy(env.skyU.bottom.value);
   env.sun.color.lerpColors(DAY.sun, NIGHT.sun, t).lerp(C('#ff8a4a'), dusk * 0.5);
-  env.sun.intensity = L(3.0, 0.28, t);
+  env.sun.intensity = L(3.6, 0.28, t);
   env.sunDir = new THREE.Vector3().lerpVectors(DAY.sunPos, NIGHT.sunPos, t).normalize();
   env.sun.position.copy(env.sun.target.position).addScaledVector(env.sunDir, 2000);
   env.skyU.sunDir.value.copy(env.sunDir);
   env.skyU.sunAmt.value = 1 - THREE.MathUtils.smoothstep(t, 0.2, 0.6);
   env.skyU.ground.value.lerpColors(C('#c9ccd1'), C('#07090c'), t);
-  if (env.envDay) { scene.environment = t < 0.5 ? env.envDay : env.envNight; scene.environmentIntensity = THREE.MathUtils.lerp(0.75, 0.25, t); }
+  if (env.envDay) { scene.environment = t < 0.5 ? env.envDay : env.envNight; scene.environmentIntensity = THREE.MathUtils.lerp(0.55, 0.25, t); }
   env.hemi.color.lerpColors(DAY.hemiSky, NIGHT.hemiSky, t);
   env.hemi.groundColor.lerpColors(DAY.hemiGround, NIGHT.hemiGround, t);
-  env.hemi.intensity = L(0.62, 0.22, t);
+  env.hemi.intensity = L(0.48, 0.22, t); // 白天天光略收，阴影才有层次
   env.stars.material.opacity = THREE.MathUtils.smoothstep(t, 0.6, 1);
 }
 
 /** 阴影范围跟随视角：镜头越近，阴影贴图覆盖的范围越小、越清晰 */
-export function fitShadow(env, target, dist) {
-  const half = THREE.MathUtils.clamp(dist * 0.85, 45, 1300);
+// 斜看时镜头附近的物体也要在阴影范围内：阴影中心从目标点往镜头的地面投影挪一段，范围同时覆盖两者
+const _fitC = new THREE.Vector3();
+export function fitShadow(env, aim, dist, eye) {
+  let target = aim, half = THREE.MathUtils.clamp(dist * 0.85, 45, 1300);
+  if (eye) {
+    _fitC.set(eye.x, 0, eye.z);
+    const span = Math.hypot(_fitC.x - aim.x, _fitC.z - aim.z);
+    _fitC.lerpVectors(aim, _fitC, 0.45).setY(0);
+    target = _fitC;
+    half = THREE.MathUtils.clamp(Math.max(dist * 0.6, span * 0.6 + 30), 45, 1300);
+  }
   const before = env.sun.target.position.clone(), beforeHalf = env.sun.shadow.camera.right;
   const cam = env.sun.shadow.camera;
   const texel = (half * 2) / env.sun.shadow.mapSize.x;

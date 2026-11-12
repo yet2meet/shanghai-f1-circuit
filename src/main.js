@@ -38,7 +38,7 @@ const DPR_MIN = Math.min(DPR_CAP, MOBILE ? 1 : 0.75);
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(DPR_CAP);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; // 柔和阴影边缘
 renderer.shadowMap.autoUpdate = false; // 阴影只在视角变化或每隔几帧更新一次
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
@@ -94,6 +94,7 @@ const osm = buildOSM(scene);
 const karting = buildKarting(scene);
 await step(0.72, tr('种植草木与周边环境', 'Planting trees and surroundings'));
 const env = buildEnvironment(scene, track, stands, renderer);
+if (!MOBILE) env.sun.shadow.mapSize.set(4096, 4096); // 桌面端阴影更细（近看座椅、车库、赛车的投影边缘不再发虚成块）
 const cars = buildCars(scene, track);
 const standById = Object.fromEntries(stands.map((s) => [s.spec.id, s]));
 
@@ -732,7 +733,7 @@ function tick(dt) {
   // 近裁剪面随镜头距离变化：近看时 0.3 m，远看时放宽，保证深度精度
   const near = THREE.MathUtils.clamp(Math.min(dist, camera.position.y) * 0.02, 0.3, 30);
   if (Math.abs(camera.near - near) / near > 0.15) { camera.near = near; camera.updateProjectionMatrix(); }
-  const shadowMoved = fitShadow(env, controls.target, dist);
+  const shadowMoved = fitShadow(env, controls.target, dist, camera.position);
   // 阴影：视角变化时立即重画，否则每 4 帧一次（让行驶中的赛车阴影跟上）
   if (shadowMoved || camMoved || perf.frame - perf.lastShadow >= 4) { renderer.shadowMap.needsUpdate = true; perf.lastShadow = perf.frame; }
   // 看台细节层级：镜头离看台较远时用座面条带代替逐个座位
