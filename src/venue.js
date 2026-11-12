@@ -138,6 +138,43 @@ export function buildVenue(scene, track, pitb) {
   }
   g.add(gantry);
 
+  // 维修通道时钟：TAG Heuer 自 2025 年起接替 Rolex 成为 F1 官方计时（维修墙上的时钟随之更换）。
+  // 只用文字字样，显示上海当地时间；具体位置为近似（立在发车线旁的维修墙上）。
+  const clockTex = canvasTex(512, 256, () => {});
+  const drawClock = () => {
+    const cx = clockTex.image.getContext('2d'), w = 512, h = 256;
+    cx.fillStyle = '#0b0c0e'; cx.fillRect(0, 0, w, h);
+    cx.fillStyle = '#1d1f24'; cx.fillRect(0, 0, w, 66);
+    cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.fillStyle = '#ffffff'; cx.font = 'bold 40px "Helvetica Neue", Arial, sans-serif';
+    cx.fillText('TAG HEUER', w / 2, 35);
+    cx.fillStyle = '#e10600'; cx.fillRect(0, 64, w, 4);
+    const tm = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Shanghai', hour12: false });
+    cx.fillStyle = '#f2f2f2'; cx.font = 'bold 116px "Consolas", "Courier New", monospace';
+    cx.fillText(tm, w / 2, 166);
+    clockTex.needsUpdate = true;
+  };
+  drawClock();
+  setInterval(drawClock, 1000);
+  {
+    let ic = 0, bd = Infinity;
+    for (let j = i0; j <= i1; j++) { const dd = pit.pts[j].distanceTo(sp); if (dd < bd) { bd = dd; ic = j; } }
+    const cp = pit.pts[ic], cn = pit.nor[ic], ct = pit.tan[ic];
+    const clk = new THREE.Group();
+    clk.position.copy(cp).addScaledVector(cn, 6.6).setY(0);
+    clk.rotation.y = Math.atan2(ct.x, ct.z) - Math.PI / 2; // 屏面朝向维修通道
+    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.6, 0.16), steel); pole.position.y = 2.55; clk.add(pole);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.2, 0.22), dark); box.position.y = 4.4; clk.add(box);
+    const faceMat = new THREE.MeshStandardMaterial({ map: clockTex, emissive: '#ffffff', emissiveMap: clockTex, emissiveIntensity: 0.55, roughness: 0.4 });
+    for (const sd of [1, -1]) {
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(2.16, 1.08), faceMat);
+      face.position.set(0, 4.4, sd * 0.115); face.rotation.y = sd > 0 ? 0 : Math.PI;
+      clk.add(face);
+    }
+    clk.traverse((o) => { o.castShadow = true; });
+    g.add(clk);
+  }
+
   // ── 裁判岗亭（沿赛道外侧，约每 190 m 一座）──
   const posts = [];
   for (let i = 20; i < track.N; i += 56) {

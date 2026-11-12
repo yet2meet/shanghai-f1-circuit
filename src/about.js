@@ -13,8 +13,8 @@ const sections = () => [
     `© ${YEAR} ${AUTHOR}，保留所有权利。本站的源代码、程序化三维模型、界面设计与文案均为作者原创，未经书面许可，不得复制、修改、转载、分发或部署本站及其任何部分。`,
     `© ${YEAR} ${AUTHOR}. All rights reserved. The source code, procedural 3D models, interface design and text of this site are original works of the author. Copying, modifying, republishing, distributing or deploying this site or any part of it without written permission is prohibited.`)],
   [t('商标与素材', 'Trademarks & assets'), t(
-    'Formula 1、F1 标志及各车队名称、标志均为其各自权利人所有，本站按项目方获得的授权使用，仅用于识别与展示。',
-    'Formula 1, the F1 logo and all team names and logos are the property of their respective owners and are used under authorisation obtained by the project, for identification and display only.')],
+    'Formula 1、F1 标志及各车队名称、标志均为其各自权利人所有，本站按项目方获得的授权使用，仅用于识别与展示。场景中出现的赛事冠名（喜力 Heineken）与官方计时（TAG Heuer）名称同属其各自权利人，仅以文字形式还原现场，不代表任何合作或背书。',
+    'Formula 1, the F1 logo and all team names and logos are the property of their respective owners and are used under authorisation obtained by the project, for identification and display only. The race title sponsor (Heineken) and official timekeeper (TAG Heuer) names shown in the scene belong to their respective owners; they appear as plain text to reflect the venue and imply no partnership or endorsement.')],
   [t('数据来源', 'Data sources'), t(
     '票价：2026 F1 喜力中国大奖赛官方票价表（久事体育）。地图数据 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 贡献者（ODbL）。卫星影像（可选）© Esri, Maxar, Earthstar Geographics。三维渲染：three.js。',
     'Prices: official 2026 F1 Heineken Chinese Grand Prix price list (Juss Sports). Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL). Satellite imagery (optional) © Esri, Maxar, Earthstar Geographics. 3D rendering: three.js.')],

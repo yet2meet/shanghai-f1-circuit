@@ -134,11 +134,12 @@ export function buildTrack(scene) {
   }
 
   // 护墙
-  // 护墙上的场地标识带（仅使用赛车场自身的名称，不含任何第三方商标）
+  // 护墙上的标识带：赛车场名称 + 2026 赛事官方全称（喜力为冠名赞助商）。
+  // 各弯道的具体赞助商布置没有可靠公开资料，因此不按弯道摆放品牌，只用已确认的赛事名称。
   const adTex = canvasTex(2048, 64, (c, w, h) => {
     const panels = [
       ['#0d1b3e', '#ffffff', '上海国际赛车场'], ['#e10600', '#ffffff', 'SHANGHAI INTERNATIONAL CIRCUIT'],
-      ['#ffffff', '#0d1b3e', '中国大奖赛 · CHINESE GRAND PRIX'], ['#15151e', '#ffd60a', 'SHANGHAI 2026'],
+      ['#0b7a3b', '#ffffff', 'FORMULA 1 HEINEKEN CHINESE GRAND PRIX 2026'], ['#15151e', '#ffd60a', 'F1 喜力中国大奖赛 · SHANGHAI 2026'],
     ];
     const pw = w / panels.length;
     panels.forEach(([bg, fg, text], k) => {
