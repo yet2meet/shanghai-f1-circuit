@@ -74,13 +74,13 @@ const home = venues.find((v) => v.home);
 const LON0 = 146;
 const S = { lon: LON0, lat: 16, zoom: 1, phase: 'spin', t: 0, w: 0, h: 0, dpr: 1, last: null, lit: 0, alpha: 1 };
 let goto = null, resolveFinish = null, raf = 0, done = false, ready = false;
-let speed = BASE;
 // 地球始终匀速自转：加载快也要把 24 站全部转完再去上海，加载慢就继续匀速转
 // 巡游：以 BASE 匀速转一圈（约 6.7 秒）。加载提前完成 → 逐渐加速，约 1.5 秒内转完剩下的路；
 // 加载较慢 → 临近上海时平滑放慢、悠悠靠近但不越过，等加载完成再停稳。转速只做渐变，没有突变。
 const TOTAL = ((((home.lon - LON0) % 360) + 360) % 360) || 360;   // 墨尔本 → 一圈 → 上海，约 335°
 const BASE = 50, MAX = 90, FINISH = 1.5;                           // 度/秒；加载完后收尾时间（秒）
 const SLOW = 28;                                                   // 最后这么多度内平滑减速停到上海
+let speed = BASE;   // 必须写在 BASE 声明之后，否则模块加载时就会抛 ReferenceError
 
 function resize() {
   S.dpr = Math.min(devicePixelRatio || 1, 2);
