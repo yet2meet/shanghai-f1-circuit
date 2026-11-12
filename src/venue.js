@@ -3,7 +3,7 @@
 // 建筑本体（维修楼、主看台顶棚、“翼”形结构、围场行宫等）由 osm.js 按 OSM 真实轮廓生成。
 import * as THREE from 'three';
 import { TEAMS, TURNS } from './data.js';
-import { OSM_PIT, OSM_STANDS } from './osm-data.js';
+import { OSM_PIT, OSM_STANDS, OSM_BUILDINGS } from './osm-data.js';
 import { V, std, lampMat, makePath, ribbon, wall, canvasTex, floodlit } from './util.js';
 import { asGround } from './osm.js';
 import { HW } from './track.js';
@@ -262,6 +262,48 @@ export function buildVenue(scene, track, pitb) {
       board.add(post, backP, panel);
       g.add(board);
     });
+  }
+
+  // ── 穿越赛道下方的车行隧道（OSM：way 132638863 主直道下方、way 156347882 8 号弯一带下方）──
+  // 隧道本体在地下不建模，只做两端的下沉引道：深色坡道 + 两侧挡墙 + 洞口门墙。
+  // 洞口落在建筑轮廓内（通向地下车库）的一端不画。
+  const TUNNELS = [[[-562, 305], [-469, 303]], [[-5, -46], [-126, -41]]];
+  const inBuilding = (x, n) => OSM_BUILDINGS.some((b) => {
+    const pp = b.p; let ins = false;
+    for (let i = 0, j = pp.length - 2; i < pp.length; j = i, i += 2) {
+      const xi = pp[i], ni = pp[i + 1], xj = pp[j], nj = pp[j + 1];
+      if ((ni > n) !== (nj > n) && x < ((xj - xi) * (n - ni)) / (nj - ni) + xi) ins = !ins;
+    }
+    return ins;
+  }) || (() => { // 维修楼（程序生成，不在 OSM 建筑列表里）
+    const v = V(x, n).sub(pitb.front), d = v.dot(pitb.f), al = v.dot(new THREE.Vector3().crossVectors(pitb.f, UP));
+    return Math.abs(al) < pitb.L / 2 + 2 && d < 2 && d > -45;
+  })();
+  const rampTex = canvasTex(32, 128, (cx, w, h) => {
+    const gr = cx.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, '#07080a'); gr.addColorStop(0.35, '#1d1f23'); gr.addColorStop(1, '#4a4d53');
+    cx.fillStyle = gr; cx.fillRect(0, 0, w, h);
+  });
+  const rampMat = new THREE.MeshStandardMaterial({ map: rampTex, roughness: 0.95 });
+  const concrete = std('#b9b6ae', { roughness: 0.9 }, 0.35);
+  const RW = 7, RL = 26; // 引道宽、长（m）
+  for (const [A, B] of TUNNELS) for (const [P, Q] of [[A, B], [B, A]]) {
+    if (inBuilding(P[0], P[1])) continue;
+    const pw = V(P[0], P[1]), qw = V(Q[0], Q[1]);
+    const out = pw.clone().sub(qw).setY(0).normalize(); // 从洞口指向地面道路
+    const ang = Math.atan2(out.x, out.z);
+    const port = new THREE.Group();
+    port.position.copy(pw); port.rotation.y = ang;
+    const ramp = new THREE.Mesh(new THREE.PlaneGeometry(RW, RL).rotateX(-Math.PI / 2).translate(0, 0.07, RL / 2), rampMat);
+    port.add(asGround(ramp, -3.95));
+    for (const sd of [-1, 1]) { // 两侧挡墙：外端齐地，往洞口方向墙顶护栏
+      const wl = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.1, RL).translate(sd * (RW / 2 + 0.2), 0.55, RL / 2), concrete);
+      port.add(wl);
+    }
+    const head = new THREE.Mesh(new THREE.BoxGeometry(RW + 2, 1.6, 1.2).translate(0, 0.8, -0.6), concrete); // 洞口上方门墙
+    port.add(head);
+    port.traverse((o) => { if (o.isMesh && o !== ramp) { o.castShadow = true; o.receiveShadow = true; } });
+    g.add(port);
   }
 
   scene.add(g);
