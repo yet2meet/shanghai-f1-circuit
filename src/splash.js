@@ -71,11 +71,16 @@ const home = venues.find((v) => v.home);
 
 // ── 状态 ──
 // 从赛季揭幕站墨尔本出发（铃鹿在旁），一路向东转一整圈，最后停在上海
-const S = { prevD: 999, lon: 146, lat: 16, zoom: 1, phase: 'spin', t: 0, w: 0, h: 0, dpr: 1, last: null, lit: 0, alpha: 1 };
+const LON0 = 146;
+const S = { lon: LON0, lat: 16, zoom: 1, phase: 'spin', t: 0, w: 0, h: 0, dpr: 1, last: null, lit: 0, alpha: 1 };
 let goto = null, resolveFinish = null, raf = 0, done = false, ready = false;
+let speed = BASE;
 // 地球始终匀速自转：加载快也要把 24 站全部转完再去上海，加载慢就继续匀速转
-const SPEED = 30;      // 度/秒
-const SLOW = 28;       // 抵达上海前最后这么多度内平滑减速
+// 巡游：以 BASE 匀速转一圈（约 6.7 秒）。加载提前完成 → 逐渐加速，约 1.5 秒内转完剩下的路；
+// 加载较慢 → 临近上海时平滑放慢、悠悠靠近但不越过，等加载完成再停稳。转速只做渐变，没有突变。
+const TOTAL = ((((home.lon - LON0) % 360) + 360) % 360) || 360;   // 墨尔本 → 一圈 → 上海，约 335°
+const BASE = 50, MAX = 90, FINISH = 1.5;                           // 度/秒；加载完后收尾时间（秒）
+const SLOW = 28;                                                   // 最后这么多度内平滑减速停到上海
 
 function resize() {
   S.dpr = Math.min(devicePixelRatio || 1, 2);
@@ -101,22 +106,20 @@ function draw(now) {
 
   // 推进动画
   if (S.phase === 'spin') {
-    S.lon += SPEED * dt;
-    const dLon = ((((home.lon - S.lon) % 360) + 360) % 360);
-    // 恰好转到上海前 SLOW 度时才开始减速；此时还没亮的分站必须都在剩下这段路上（减速途中会依次亮起）
-    if (ready && dLon <= SLOW && S.prevD > SLOW) {
-      const pending = venues.every((v) => v.t0 || ((((v.lon - S.lon) % 360) + 360) % 360) <= dLon + 1);
-      if (pending) {
-        goto = { done: 0, total: dLon, lon0: S.lon, lat0: S.lat };
-        S.phase = 'goto';
-        elStep.textContent = t('即将抵达上海', 'Arriving in Shanghai');
-        setTimeout(end, (SLOW / SPEED * 2.5 + 2.4) * 1000 + 1500); // 后台标签页 rAF 暂停时的兜底
-      }
+    const left = TOTAL - (S.lon - LON0);
+    const want = ready ? Math.min(MAX, Math.max(speed, left / FINISH)) : BASE;
+    speed += (want - speed) * Math.min(1, dt * 1.5);                            // 渐变
+    if (!ready) speed = Math.min(speed, Math.max(0, (left - 3) * 0.9));         // 还没加载完：越接近上海越慢，不越过
+    S.lon += speed * dt;
+    if (ready && TOTAL - (S.lon - LON0) <= Math.max(SLOW * Math.min(1, speed / BASE), 2)) {
+      goto = { done: 0, total: Math.max(0.05, TOTAL - (S.lon - LON0)), lon0: S.lon, lat0: S.lat, v0: Math.max(speed, 3) };
+      S.phase = 'goto';
+      elStep.textContent = t('即将抵达上海', 'Arriving in Shanghai');
+      setTimeout(end, 6000); // 后台标签页 rAF 暂停时的兜底
     }
-    S.prevD = dLon;
   } else if (S.phase === 'goto') {
     const left = goto.total - goto.done;
-    const v = SPEED * Math.max(0.08, Math.min(1, Math.sqrt(left / SLOW)));   // 匀速，最后一段平滑减速
+    const v = goto.v0 * Math.max(0.08, Math.min(1, Math.sqrt(left / Math.max(1, goto.total))));   // 平滑减速
     goto.done = Math.min(goto.total, goto.done + v * dt);
     S.lon = goto.lon0 + goto.done;
     const k = goto.total ? goto.done / goto.total : 1;
@@ -130,6 +133,8 @@ function draw(now) {
     if (S.t >= 0.5 && resolveFinish) { resolveFinish(); resolveFinish = null; }
     if (S.t >= 1) return end();
   }
+  // 进度条与地球同步：显示巡游走过的比例
+  if (S.phase !== 'zoom') elBar.style.transform = `scaleX(${Math.max(0.03, Math.min(1, (S.lon - LON0) / TOTAL)).toFixed(4)})`;
 
   const { w, h, dpr } = S;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -222,8 +227,7 @@ raf = requestAnimationFrame(draw);
 
 window.__splash = {
   /** p: 0..1 */
-  progress(p, text) {
-    elBar.style.transform = `scaleX(${Math.max(0.03, Math.min(1, p))})`;
+  progress(_p, text) {   // 进度条跟随地球巡游，这里只更新文字
     if (text) elStep.textContent = text;
   },
   /** 加载完成：转到上海 → 放大 → 淡出。Promise 在开始淡出时兑现。 */
@@ -234,7 +238,7 @@ window.__splash = {
     return new Promise((res) => {
       resolveFinish = res;
       // 标签页在后台时 rAF 会暂停，这里兜底，保证主场景一定能显示出来（最多再转一圈半）
-      setTimeout(end, (540 / SPEED + 4) * 1000);
+      setTimeout(end, (TOTAL / BASE + FINISH + 6) * 1000);
     });
   },
   fail(msg) { elStep.textContent = msg; root.classList.add('failed'); },
