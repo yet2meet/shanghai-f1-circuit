@@ -1,9 +1,5 @@
 import * as THREE from 'three';
 import { V, rng, std, floodlit, lampMat, canvasTex } from './util.js';
-import { HW } from './track.js';
-import { TRUE_NORTH } from './track-data.js';
-
-const CENTER = V(-200, -20);
 
 function glowTexture() {
   return canvasTex(64, 64, (c) => {
@@ -33,8 +29,18 @@ function skyMaterial(u, opts = {}) {
   return new THREE.ShaderMaterial({ uniforms: u, side: THREE.BackSide, depthTest: false, depthWrite: false, fog: false, vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, ...opts });
 }
 
-export function buildEnvironment(scene, track, stands, renderer) {
+/**
+ * cfg（由各赛道档案提供）：
+ *   center    视角中心 [x, n]（米）
+ *   trueNorth 真北在场景 (x, n) 坐标中的单位向量
+ *   sun       白天太阳的方位角、高度角（度；按比赛时刻与经纬度算出）
+ *   poles     是否沿赛道布置照明灯杆（灯杆位置没有可靠资料的赛道不放）
+ */
+export function buildEnvironment(scene, track, stands, renderer, cfg) {
+  const CENTER = V(cfg.center[0], cfg.center[1]);
   const env = { glows: [] };
+  const DAY = { top: C('#2f86e0'), bottom: C('#cfe6f7'), sun: C('#fff0d6'), hemiSky: C('#cfe4ff'), hemiGround: C('#7a7560'), sunPos: sunAt(cfg.trueNorth, cfg.sun.az, cfg.sun.el) };
+  env.DAY = DAY;
   const rand = rng(20040926);
 
   // ── 天空 ──
@@ -79,10 +85,10 @@ export function buildEnvironment(scene, track, stands, renderer) {
 
   // ── 赛道照明灯杆 ──
   const poles = [];
-  for (let i = 0; i < track.N; i += 34) {
+  for (let i = 0; cfg.poles !== false && i < track.N; i += 34) {
     for (const side of [1, -1]) {
-      if (side < 0 && track.pitZone(i)) continue;
-      const off = HW + 9 + (side > 0 ? track.gwL[i] : track.gwR[i]);
+      if ((side > 0) === track.pitLeft && track.pitZone(i)) continue;
+      const off = track.hw + 9 + (side > 0 ? track.gwL[i] : track.gwR[i]);
       const x = track.pts[i].x + track.nor[i].x * off * side, z = track.pts[i].z + track.nor[i].z * off * side;
       if (nearStand(x, z, -14)) continue;
       poles.push(x, z, Math.atan2(-track.nor[i].x * side, -track.nor[i].z * side));
@@ -146,17 +152,13 @@ export function buildEnvironment(scene, track, stands, renderer) {
 }
 
 const C = (h) => new THREE.Color(h);
-// 白天的太阳：按正赛发车时刻（3 月中旬 15:00，北纬 31.3°）算出的真实方位 —— 高度角约 37°、方位角约 240°（西南偏西）。
-// 场景坐标由 TRUE_NORTH 换算：北 N、东 E = (N.n, -N.x)，水平方向 = cos(az)·N + sin(az)·E。
-const sunAt = (azDeg, elDeg) => {
+// 白天的太阳按比赛时刻与经纬度算出真实方位（各赛道档案给出方位角、高度角）。
+// 场景坐标由 trueNorth 换算：北 N、东 E = (N.n, -N.x)，水平方向 = cos(az)·N + sin(az)·E。
+const sunAt = (trueNorth, azDeg, elDeg) => {
   const az = (azDeg * Math.PI) / 180, el = (elDeg * Math.PI) / 180;
-  const [nx, nn] = TRUE_NORTH, ex = nn, en = -nx;
+  const [nx, nn] = trueNorth, ex = nn, en = -nx;
   const hx = Math.cos(az) * nx + Math.sin(az) * ex, hn = Math.cos(az) * nn + Math.sin(az) * en;
   return V(hx * Math.cos(el), hn * Math.cos(el), Math.sin(el)).multiplyScalar(2000);
-};
-const DAY = {
-  top: C('#2f86e0'), bottom: C('#cfe6f7'), sun: C('#fff0d6'), hemiSky: C('#cfe4ff'), hemiGround: C('#7a7560'),
-  sunPos: sunAt(240, 37),
 };
 const NIGHT = {
   top: C('#02040c'), bottom: C('#111d38'), sun: C('#8fb0ff'), hemiSky: C('#22355e'), hemiGround: C('#06080d'),
@@ -165,7 +167,7 @@ const NIGHT = {
 
 /** t: 0 = 白天, 1 = 黑夜 */
 export function applyTime(env, scene, t) {
-  const L = THREE.MathUtils.lerp;
+  const L = THREE.MathUtils.lerp, DAY = env.DAY;
   env.skyU.top.value.lerpColors(DAY.top, NIGHT.top, t);
   env.skyU.bottom.value.lerpColors(DAY.bottom, NIGHT.bottom, t);
   // 黄昏暖色

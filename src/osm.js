@@ -3,7 +3,6 @@
 // 唯一的“填充”内容：OSM 只标了住宅区范围、没有逐栋楼的轮廓，这些区域里的楼房是按区域类型生成的示意体块。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { OSM_BUILDINGS, OSM_AREAS, OSM_LINES } from './osm-data.js';
 import { rng, std, floodlit, canvasTex, nightEmissives } from './util.js';
 import { loft } from './f1car.js';
 import { groundDetail } from './textures.js';
@@ -164,12 +163,74 @@ function splitUpDown(g) {
   });
 }
 
-function windowTexture(wall, glass, lit) {
+// cols = 1：整层一扇宽窗（默认）；cols = 2：城市高楼用，一块纹理 4 列 × 8 层，每扇窗夜里各自随机亮灯，避免整面墙亮成规则的条纹
+function windowTexture(wall, glass, lit, cols = 1) {
+  if (cols === 2) {
+    return canvasTex(128, 256, (c, w, h) => {
+      c.fillStyle = lit ? '#000' : wall; c.fillRect(0, 0, w, h);
+      for (let j = 0; j < 8; j++) for (let i = 0; i < 4; i++) {
+        c.fillStyle = lit ? (Math.random() < 0.42 ? (Math.random() < 0.5 ? '#fff4dc' : '#cfe0ff') : '#1c1c1e') : glass;
+        c.fillRect(i * 32 + 4, j * 32 + 7, 24, 18);
+      }
+    });
+  }
   return canvasTex(64, 64, (c, w, h) => {
-    c.fillStyle = wall; c.fillRect(0, 0, w, h);
-    c.fillStyle = glass; c.fillRect(10, 18, 44, 30);
-    if (lit) { c.fillStyle = '#000'; c.fillRect(0, 0, w, h); c.fillStyle = Math.random() < 0.6 ? '#fff' : '#555'; c.fillRect(10, 18, 44, 30); }
+    c.fillStyle = lit ? '#000' : wall; c.fillRect(0, 0, w, h);
+    c.fillStyle = lit ? (Math.random() < 0.6 ? '#fff' : '#555') : glass; c.fillRect(10, 18, 44, 30);
   });
+}
+
+/**
+ * 城市高楼的立面变体：不同楼型有不同的亮灯方式，同一座城市的灯光才不会整齐划一。
+ *   office 写字楼：整层整层地亮或灭（办公室开关灯是按层的），冷白光
+ *   resi   住宅：零星的暖色窗，亮度各不相同
+ *   hotel  酒店：较密的暖光
+ *   sparse 很暗的楼：只有几扇窗亮着
+ *   mixed  一般：随机亮灯，冷暖混合
+ * 每栋楼再随机错开贴图位置（见 offsetUV），相邻两栋即使同一变体也不会亮成同一个图案。
+ */
+const FACADE_KINDS = {
+  office: { glass: '#4d6d8b', lit: { rows: 0.55, p: 0.92, cols: ['#e6efff', '#fff6e0', '#d6e4ff'] } },
+  resi: { glass: '#7b8d99', lit: { p: 0.30, cols: ['#ffd9a0', '#ffe6bd', '#fff1d6', '#ffcf8a'] } },
+  hotel: { glass: '#667f86', lit: { p: 0.55, cols: ['#ffe2b0', '#fff0d0', '#ffd49a'] } },
+  sparse: { glass: '#868b93', lit: { p: 0.13, cols: ['#ffe2b0', '#e6efff'] } },
+  mixed: { glass: '#5d7691', lit: { p: 0.40, cols: ['#fff4dc', '#cfe0ff', '#ffd9a0', '#ffffff'] } },
+  // 地标专用（opts.specialFacade 指定）：深色玻璃幕墙配浅色竖向格栅，如滨海湾金沙的塔楼
+  landmark: { wall: '#c3ccd6', glass: '#2c4766', lit: { p: 0.5, cols: ['#fff4dc', '#ffe2b0', '#dfeaff'] } },
+};
+function cityFacadeMaterials(FA) {
+  const out = {};
+  for (const [name, K] of Object.entries(FACADE_KINDS)) {
+    const day = canvasTex(128, 256, (c, w, h) => {
+      c.fillStyle = K.wall || FA.wall; c.fillRect(0, 0, w, h);
+      for (let j = 0; j < 8; j++) for (let i = 0; i < 4; i++) { c.fillStyle = K.glass; c.fillRect(i * 32 + 4, j * 32 + 7, 24, 18); }
+    });
+    const lit = canvasTex(128, 256, (c, w, h) => {
+      c.fillStyle = '#000'; c.fillRect(0, 0, w, h);
+      for (let j = 0; j < 8; j++) {
+        const rowOn = K.lit.rows === undefined || Math.random() < K.lit.rows;
+        for (let i = 0; i < 4; i++) {
+          if (!rowOn || Math.random() > K.lit.p) continue;
+          const col = K.lit.cols[(Math.random() * K.lit.cols.length) | 0];
+          c.globalAlpha = 0.55 + Math.random() * 0.45; // 每扇窗亮度不同
+          c.fillStyle = col; c.fillRect(i * 32 + 4, j * 32 + 7, 24, 18);
+        }
+      }
+      c.globalAlpha = 1;
+    });
+    for (const t of [day, lit]) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / 7.2, 1 / 27.2); }
+    const m = floodlit(new THREE.MeshStandardMaterial({ map: day, emissive: '#ffffff', emissiveMap: lit, emissiveIntensity: 0, roughness: 0.8 }), FA.glow);
+    nightEmissives.push({ m, max: 1.1 });
+    out[name] = m;
+  }
+  return out;
+}
+/** 把侧面 UV 随机平移（米）：同一种立面贴在不同楼上，亮灯图案各不相同 */
+function offsetUV(g, du, dv) {
+  const uv = g.attributes.uv;
+  if (!uv) return g;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) + du, uv.getY(i) + dv);
+  return g;
 }
 
 /** 多边形主方向（主成分）：返回中心、长轴单位向量、长度、宽度 */
@@ -237,7 +298,52 @@ function buildWing(b, put) {
   }
 }
 
-export function buildOSM(scene) {
+/**
+ * 圆顶壳体（滨海艺术中心的“榴莲”）：以建筑轮廓的外接椭圆为底、按 OSM 高度做半椭球玻璃壳，
+ * 壳面上一圈圈排满朝外的三角形铝制遮阳片（真实建筑的遮阳片约 7000 片，这里按壳面面积约每 10 m² 一片示意）。
+ */
+function durianDome(b, root) {
+  const P = principal(b.p);
+  const H = b.h, a = P.L / 2, c = P.W / 2;
+  const group = new THREE.Group();
+  group.position.set(P.cx, 0, -P.cn);
+  group.rotation.y = Math.atan2(P.un, P.ux);
+  const glass = new THREE.MeshStandardMaterial({ color: '#56728c', roughness: 0.2, metalness: 0.4, emissive: '#ffd9a0', emissiveIntensity: 0, side: THREE.DoubleSide });
+  nightEmissives.push({ m: glass, max: 0.55 });
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2).scale(a, H, c), glass);
+  shell.castShadow = true; shell.receiveShadow = true;
+  group.add(shell);
+  // 遮阳片：沿纬线一圈圈排布，朝壳面外法线
+  const spots = [];
+  const rings = Math.max(8, Math.round(H / 2.2));
+  for (let i = 0; i < rings; i++) {
+    const phi = ((i + 0.5) / rings) * (Math.PI / 2) * 0.97;
+    const circ = 2 * Math.PI * Math.sqrt((a * a + c * c) / 2) * Math.sin(phi);
+    const k = Math.max(5, Math.round(circ / 3.1));
+    for (let j = 0; j < k; j++) {
+      const th = ((j + (i % 2) * 0.5) / k) * Math.PI * 2;
+      const x = a * Math.sin(phi) * Math.cos(th), y = H * Math.cos(phi), z = c * Math.sin(phi) * Math.sin(th);
+      const n = new THREE.Vector3(x / (a * a), y / (H * H), z / (c * c)).normalize();
+      spots.push([x, y, z, n]);
+    }
+  }
+  const fin = new THREE.InstancedMesh(new THREE.ConeGeometry(0.95, 2.1, 3).translate(0, 1.05, 0), std('#f1f3f6', { roughness: 0.4, metalness: 0.2 }, 0.7), spots.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
+  spots.forEach(([x, y, z, n], i) => { q.setFromUnitVectors(up, n); q.multiply(new THREE.Quaternion().setFromAxisAngle(up, (i * 1.7) % 6.28)); fin.setMatrixAt(i, m4.compose(new THREE.Vector3(x, y, z).addScaledVector(n, -0.15), q, one)); });
+  fin.castShadow = true;
+  group.add(fin);
+  root.add(group);
+}
+
+/**
+ * data：{ OSM_BUILDINGS, OSM_AREAS, OSM_LINES }（由赛道档案提供）；
+
+ * opts.treeKeepOut：不种树的圆形区域 [{ c: [x, n], r }]
+ * opts.durian：为 true 时，OSM 标为 dome 的高大建筑（滨海艺术中心）做成带遮阳片的圆顶壳
+ * opts.venueZone(p)：判断建筑是否属于场馆自身（用于场内配套楼、顶棚等专门造型），不传则全部按普通建筑处理
+ */
+export function buildOSM(scene, data, opts = {}) {
+  const { OSM_BUILDINGS, OSM_AREAS, OSM_LINES } = data;
   const rand = rng(9020);
   const root = new THREE.Group();
   root.name = 'osm';
@@ -305,6 +411,7 @@ export function buildOSM(scene) {
   const parapets = [], piers = [];
   const railBed = [], rails = [], viaduct = [], viaductWalls = [];
   const waterLines = [], raceways = [], raceLines = [], fences = [];
+  let oi = 0;
   for (const l of OSM_LINES) {
     const p = l.p;
     if (l.k.startsWith('road:')) {
@@ -313,9 +420,10 @@ export function buildOSM(scene) {
       for (let i = 2; i < p.length; i += 2) total += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]);
       if (l.y > 0) {
         const major = /motorway|primary|secondary|tertiary|unclassified|trunk/.test(cls) && total > 120;
-        const H = major ? 6.5 * l.y : 1.0;
+        const H = (major ? 6.5 * l.y : 1.0) + (l.r ? (oi++ % 7) * 0.04 : 0); // 同高度的桥面彼此错开几厘米，交叉处不会闪烁
         const ramp = major ? Math.min(70, total * 0.3) : Math.min(6, total * 0.3);
-        yFn = (d, tot = total) => H * Math.min(1, d / ramp, (tot - d) / ramp) + 0.1;
+        const r0 = l.r ? l.r[0] : 1, r1 = l.r ? l.r[1] : 1; // 与相邻高架相连的一端保持全高（l.r 由赛道数据给出，上海没有该字段，行为不变）
+        yFn = (d, tot = total) => H * Math.min(1, r0 ? d / ramp : 1, r1 ? (tot - d) / ramp : 1) + 0.1;
         const g = strip(p, l.w, yFn);
         if (!g) continue;
         (raised[cls] ||= []).push(g);
@@ -398,19 +506,28 @@ export function buildOSM(scene) {
   }
 
   // ── 建筑 ──
-  const wallTex = windowTexture('#e7e4dd', '#7d93a6');
-  wallTex.wrapS = wallTex.wrapT = THREE.RepeatWrapping; wallTex.repeat.set(1 / 3.6, 1 / 3.4);
-  const litTex = windowTexture('#000', '#fff', true);
+  // opts.facade：立面样式（默认上海一带的浅色墙面；城市赛道可传更深的玻璃幕墙与双窗）
+  const FA = { wall: '#e7e4dd', glass: '#7d93a6', cols: 1, glow: 0.25, ...(opts.facade || {}) };
+  const wallTex = windowTexture(FA.wall, FA.glass, false, FA.cols);
+  wallTex.wrapS = wallTex.wrapT = THREE.RepeatWrapping; wallTex.repeat.set(FA.cols === 2 ? 1 / 7.2 : 1 / 3.6, FA.cols === 2 ? 1 / 27.2 : 1 / 3.4);
+  const litTex = windowTexture('#000', '#fff', true, FA.cols);
   litTex.wrapS = litTex.wrapT = THREE.RepeatWrapping; litTex.repeat.copy(wallTex.repeat);
-  const windowWall = floodlit(new THREE.MeshStandardMaterial({ map: wallTex, emissive: '#ffcf8a', emissiveMap: litTex, emissiveIntensity: 0, roughness: 0.8 }), 0.25);
-  nightEmissives.push({ m: windowWall, max: 0.9 });
+  const windowWall = floodlit(new THREE.MeshStandardMaterial({ map: wallTex, emissive: '#ffcf8a', emissiveMap: litTex, emissiveIntensity: 0, roughness: 0.8 }), FA.glow);
+  nightEmissives.push({ m: windowWall, max: FA.glow < 0.1 ? 1.1 : 0.9 });
+  const cityFacades = FA.cols === 2 ? cityFacadeMaterials(FA) : null; // 城市赛道：多种亮灯方式的立面
+  const pickFacade = (hh) => {
+    const r = rand();
+    if (hh > 90) return r < 0.7 ? 'office' : r < 0.85 ? 'mixed' : 'hotel';
+    if (hh > 40) return r < 0.35 ? 'office' : r < 0.55 ? 'hotel' : r < 0.75 ? 'mixed' : r < 0.9 ? 'resi' : 'sparse';
+    return r < 0.3 ? 'resi' : r < 0.5 ? 'sparse' : r < 0.7 ? 'mixed' : r < 0.85 ? 'office' : 'hotel';
+  };
   const MAT = {
     venue: std('#c4c9d0', { roughness: 0.45, metalness: 0.3, side: THREE.DoubleSide }, 0.16), // 建筑主体：浅银灰
     venueRoof: std('#9aa0a8', { roughness: 0.6, metalness: 0.2, side: THREE.DoubleSide }, 0.12), // 屋面：中灰
     membrane: std('#f7f8fa', { roughness: 0.45, side: THREE.DoubleSide }, 0.3),
     steel: std('#d5d9df', { roughness: 0.35, metalness: 0.55 }, 0.45),
-    roof: std('#8d939b', { roughness: 0.75 }, 0.25),
-    plain: std('#dcd7cd', { roughness: 0.85 }, 0.25),
+    roof: std('#8d939b', { roughness: 0.75 }, FA.glow),
+    plain: std(FA.glow < 0.1 ? FA.wall : '#dcd7cd', { roughness: 0.85 }, FA.glow),
     industrial: std('#c7ccd3', { roughness: 0.7 }, 0.25),
     industrialRoof: std('#6f8fae', { roughness: 0.6 }, 0.25),
   };
@@ -480,8 +597,9 @@ export function buildOSM(scene) {
   const kartBuildings = [];
   const bucket = new Map();
   const put = (mat, g) => { if (g.index) g = g.toNonIndexed(); if (!bucket.has(mat)) bucket.set(mat, []); bucket.get(mat).push(g); };
-  const venueZone = (p) => { const [x0, n0, x1, n1] = bboxOf(p); const cx = (x0 + x1) / 2, cn = (n0 + n1) / 2; return cx > -900 && cx < 560 && cn > -620 && cn < 640; };
+  const venueZone = opts.venueZone || (() => false);
   for (const b of OSM_BUILDINGS) {
+    if (b.r === 'dome' && opts.durian && b.h > 15) { durianDome(b, root); continue; }
     const A = polyArea(b.p);
     const hh = Math.max(0.3, b.h - b.m);
     const isVenue = venueZone(b.p) && b.k !== 'industrial';
@@ -548,7 +666,10 @@ export function buildOSM(scene) {
       else if (mainRoof) { const [top, under] = splitUpDown(caps); put(MAT.roofSteel, top); put(MAT.roofUnder, under); put(MAT.roofSteel, sides || caps); }
       else { put(MAT.venueRoof, caps); put(MAT.venue, sides || caps); }
     } else if (b.k === 'industrial') { put(MAT.industrialRoof, caps); put(MAT.industrial, sides || caps); }
-    else { put(MAT.roof, caps); put(hh >= 6 ? windowWall : MAT.plain, sides || caps); }
+    else if (cityFacades && hh >= 6) {
+      put(MAT.roof, caps);
+      put(cityFacades[opts.specialFacade?.(b) || pickFacade(hh)], offsetUV(sides || caps, rand() * 7.2, rand() * 27.2));
+    } else { put(MAT.roof, caps); put(hh >= 6 ? windowWall : MAT.plain, sides || caps); }
   }
 
   // ── 住宅区填充（示意）：有名字的小区 = 高层住宅；无名的 = 村落低层民房 ──
@@ -607,6 +728,12 @@ export function buildOSM(scene) {
   }
 
   // ── 树 ──
+  // opts.treeKeepOut：[{ c: [x, n], r }]，雕像等需要看清的地物周围不种树
+  if (opts.treeKeepOut?.length) {
+    const kept = [];
+    for (let i = 0; i < treeSpots.length; i += 3) if (!opts.treeKeepOut.some((k) => Math.hypot(treeSpots[i] - k.c[0], treeSpots[i + 1] - k.c[1]) < k.r)) kept.push(treeSpots[i], treeSpots[i + 1], treeSpots[i + 2]);
+    treeSpots.length = 0; treeSpots.push(...kept);
+  }
   const nT = treeSpots.length / 3;
   if (nT) {
     const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.28, 1, 5), std('#6a4f3a', { roughness: 1 }), nT);

@@ -2,6 +2,8 @@
 //   座位间距 0.55 m、排距 0.85 m；每 28 个座位设一条 1.1 m 宽的过道（过道只是建模，不代表官方分区）。
 // 票区只用官方名称（A铂金 / A上 / A下 / B / H/K / E）；排号、座号是模型内按位置的计数，不是票面座号。
 // 座位直接放在世界坐标里，点选时按“射线 ∩ 座位斜面”解析出排号与座号，不必逐个检测几万个座位。
+import { ROW_D, PITCH, SELECTED_COLOR, seatGeometry, seatMatrix, seatWorld, seatFacing, seatColor } from './seatkit.js';
+export { ROW_D, PITCH, SELECTED_COLOR, seatMatrix, seatWorld, seatFacing, seatColor };
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { STANDS, TURNS, TRACK_POINTS } from './data.js';
@@ -9,17 +11,8 @@ import { OSM_STANDS } from './osm-data.js';
 import { V, rng, std, floodlit, lampMat, extrudeProfile } from './util.js';
 import { groundDetail } from './textures.js';
 
-export const ROW_D = 0.85;
-export const PITCH = 0.55;
 const BLOCK = 28, AISLE = 2; // 每个分区 28 座 + 2 个座位宽的过道
-export const SELECTED_COLOR = new THREE.Color('#ffffff');
 const UP = new THREE.Vector3(0, 1, 0);
-
-function seatGeometry() {
-  const pan = new THREE.BoxGeometry(0.47, 0.07, 0.42); pan.translate(0, 0.44, -0.02);
-  const back = new THREE.BoxGeometry(0.47, 0.42, 0.06); back.translate(0, 0.68, 0.2);
-  return mergeGeometries([pan, back]); // 24 个三角形；座位数量大，几何尽量精简
-}
 
 /** OSM 坐标里的看台框架 → 三维：front 为前沿中点，f 指向赛道 */
 function frameOf(part) {
@@ -714,19 +707,6 @@ function pickSeat(s, ray) {
     }
   }
   return best;
-}
-
-/** 座位实例矩阵（高亮/选中时放大、抬高） */
-export function seatMatrix(s, i, scale, lift, out) {
-  const q = new THREE.Quaternion().setFromAxisAngle(UP, s.rot[i]);
-  return out.compose(new THREE.Vector3(s.base[i * 3], s.base[i * 3 + 1] + lift, s.base[i * 3 + 2]), q, new THREE.Vector3(scale, scale, scale));
-}
-export const seatWorld = (s, i) => new THREE.Vector3(s.base[i * 3], s.base[i * 3 + 1], s.base[i * 3 + 2]);
-export const seatFacing = (s, i) => (s.parts[s.seats[i].part].pick.arc ? new THREE.Vector3(-Math.sin(s.rot[i]), 0, -Math.cos(s.rot[i])) : s.parts[s.seats[i].part].f);
-
-/** 座位颜色 = 官方票区颜色（带一点随机明暗，避免看起来像一整块色板） */
-export function seatColor(spec, s, out = new THREE.Color()) {
-  return out.set(spec.zones[s.zone].color).offsetHSL(0, 0, (s.j - 0.5) * 0.06);
 }
 
 // ── 草地看台：按真实轮廓堆出草坡，四周围栏，坡上散布观众 ──

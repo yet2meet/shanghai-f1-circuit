@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { f1CarGeometry, carMaterials } from './f1car.js';
-import { TEAMS } from './data.js';
+import { TEAMS } from './teams.js';
 import { floodlit } from './util.js';
 
 export function buildCars(scene, track) {

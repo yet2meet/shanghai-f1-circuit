@@ -12,7 +12,7 @@ const FONT = '"SF Mono", "Roboto Mono", Menlo, Consolas, monospace';
 const PURPLE = '#c56bff', GREEN = '#5be37a', YELLOW = '#ffd84a', RED = '#ff5a6e', CYAN = '#3ad1ff', DIM = '#8fa3bd', INK = '#dbe6f5';
 
 /** teams：[{ color }]（计时榜与车位点的队色）；trackPts：赛道中心线 [[x, n], …] */
-export function screenAtlas(teams, trackPts) {
+export function screenAtlas(teams, trackPts, trackLabel = { name: 'SHANGHAI', km: '5.451 km' }) {
   return canvasTex(CW * 2, CH * 2, (c) => {
     const txt = (s, x, y, size = 11, col = INK, align = 'left', weight = 600) => {
       c.font = `${weight} ${size}px ${FONT}`; c.fillStyle = col; c.textAlign = align; c.textBaseline = 'middle'; c.fillText(s, x, y);
@@ -97,7 +97,7 @@ export function screenAtlas(teams, trackPts) {
     });
 
     // ── 2 赛道图 ──
-    cell(2, 'TRACK MAP · SHANGHAI', '5.451 km', () => {
+    cell(2, 'TRACK MAP · ' + trackLabel.name, trackLabel.km, () => {
       let x0 = Infinity, x1 = -Infinity, n0 = Infinity, n1 = -Infinity;
       for (const [x, n] of trackPts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); n0 = Math.min(n0, n); n1 = Math.max(n1, n); }
       const k = Math.min(296 / (x1 - x0), 258 / (n1 - n0));

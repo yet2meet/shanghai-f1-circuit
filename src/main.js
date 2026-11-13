@@ -5,15 +5,9 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
-import { STANDS, TURNS, TRUE_NORTH } from './data.js';
-import { V, night, nightEmissives, fmtPrice } from './util.js';
-import { buildTrack } from './track.js';
-import { buildStands, seatColor, seatMatrix, seatWorld as seatPos, seatFacing, SELECTED_COLOR } from './stands.js';
-import { buildVenue } from './venue.js';
-import { buildEnvironment, applyTime, fitShadow } from './environment.js';
-import { buildCars } from './cars.js';
-import { buildOSM } from './osm.js';
-import { buildKarting } from './karting.js';
+import { circuit } from './circuits/index.js';
+import { V, night, nightEmissives } from './util.js';
+import { applyTime, fitShadow } from './environment.js';
 import { initGuide } from './guide.js';
 import { initAbout } from './about.js';
 import { initDrawers } from './drawers.js';
@@ -22,7 +16,7 @@ import { createSatellite, SAT_CREDIT } from './satellite.js';
 import { loadPhotoTextures } from './textures.js';
 import { buildCamLimits } from './camlimits.js';
 import { t as tr, L, onLang, isEn } from './i18n.js';
-import { buildPitBuilding } from './pitbuilding.js';
+import { initSwitcher } from './switcher.js';
 
 const $ = (s) => document.querySelector(s);
 const canvas = $('#scene');
@@ -69,6 +63,7 @@ composer.addPass(new OutputPass());
 // ───────────────────────── 场景 ─────────────────────────
 // 分步搭建：每一步之间把主线程让出来，启动页的地球才不会卡住
 const splash = window.__splash;
+const circuitLoading = circuit.load(); // 与渲染器初始化并行下载本赛道的档案
 // 加载各阶段耗时（在控制台输入 __perf 查看）
 const __perf = (window.__perf = { t0: performance.now(), marks: [] });
 let __last = performance.now(), __label = '下载与初始化';
@@ -79,23 +74,17 @@ const step = (p, text) => {
   splash?.progress(p, text);
   return new Promise((r) => setTimeout(r, 40));
 };
-await step(0.3, tr('铺设赛道', 'Laying the track'));
-const track = buildTrack(scene);
-await step(0.45, tr('搭建看台与座位', 'Building grandstands and seats'));
-const { stands, hitboxes } = buildStands(scene, track);
-await step(0.6, tr('搭建维修区与围场', 'Building the pit lane and paddock'));
+// 当前赛道的档案（场景搭建、数据、文案）：只下载选中的这一条
+const profile = (await circuitLoading).default;
+const { STANDS, TURNS, TRUE_NORTH } = profile;
+const fmtPrice = (p) => (profile.currency || '¥') + p.toLocaleString('zh-CN'); // 上海 ¥，新加坡 S$
 // 可选的授权素材清单（public/brand/manifest.json），没有则使用文字名称牌
 const brand = await fetch('./brand/manifest.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
-const pitb = buildPitBuilding(scene, brand);
-const _pitP = new THREE.Vector3();
-const venue = buildVenue(scene, track, pitb);
-await step(0.68, tr('加载周边道路、水系与建筑', 'Loading roads, water and buildings'));
-const osm = buildOSM(scene);
-const karting = buildKarting(scene);
-await step(0.72, tr('种植草木与周边环境', 'Planting trees and surroundings'));
-const env = buildEnvironment(scene, track, stands, renderer);
+const built = await profile.build(scene, { renderer, step, brand, tr });
+const { track, stands, hitboxes, env, cars } = built;
+const seatKit = profile.seatKit || {}; // 选座相关的着色与坐标函数（只有有座位模型的赛道提供）
+const { seatColor, seatMatrix, seatWorld: seatPos, seatFacing, SELECTED_COLOR } = seatKit;
 if (!MOBILE) env.sun.shadow.mapSize.set(4096, 4096); // 桌面端阴影更细（近看座椅、车库、赛车的投影边缘不再发虚成块）
-const cars = buildCars(scene, track);
 const standById = Object.fromEntries(stands.map((s) => [s.spec.id, s]));
 
 const HOME = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
@@ -107,10 +96,12 @@ function updateHome() {
   camera.updateProjectionMatrix();
   const hf = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * aspect);
   const portrait = aspect < 0.85;
-  const k = Math.max(1, (portrait ? 620 : 860) / Math.tan(hf) / 2013);
-  // 从主看台一侧望向赛道：大直道横在近处，1 号弯在左、14 号发卡弯在右；竖屏时更接近俯视
-  HOME.target.copy(env.center).add(new THREE.Vector3(portrait ? -120 : -40, 0, innerWidth > 860 ? -150 : 0));
-  HOME.pos.copy(HOME.target).add(portrait ? new THREE.Vector3(-900 * k, 1850 * k, 40 * k) : new THREE.Vector3(-1680 * k, 1560 * k, 60 * k));
+  const H = profile.home;
+  const k = Math.max(1, H.span[portrait ? 1 : 0] / Math.tan(hf) / H.ref);
+  // 全景镜头的位置由赛道档案给出（上海：从主看台一侧望向赛道）
+  const o = H.offsets(portrait, innerWidth > 860);
+  HOME.target.copy(env.center).add(new THREE.Vector3(...o.target));
+  HOME.pos.copy(HOME.target).add(new THREE.Vector3(...o.pos).multiplyScalar(k));
   controls.maxDistance = HOME.pos.distanceTo(HOME.target) * 1.2; // 最远：比全景略远一点
 }
 updateHome();
@@ -139,8 +130,8 @@ function flyTo(pos, target, dur = 1.6) {
   controls.enabled = false;
 }
 // ───────────────────────── 自由视角：边界、防穿模、随缩放自动倾斜 ─────────────────────────
-const camLimits = buildCamLimits(stands);
-const sat = createSatellite(scene, { mobile: MOBILE });
+const camLimits = buildCamLimits(stands, { buildings: built.camBuildings || profile.osmData.OSM_BUILDINGS, venue: profile.venue });
+const sat = createSatellite(scene, { mobile: MOBILE, projection: profile.projection, venue: profile.venue });
 const _off = new THREE.Vector3(), _fwd = new THREE.Vector3(), _sph = new THREE.Spherical();
 let lastDist = 0, limitsDirty = true;
 const WALK_D = 8; // 镜头与注视点的最近距离；再放大就向前走
@@ -325,6 +316,20 @@ TURNS.forEach(([n, x, y]) => {
   labelsEl.appendChild(el);
   labels.push({ el, pos: V(x, y, 14), kind: 'turn', ax: -0.5, ay: -0.5, dy: 0 });
 });
+// 地标标签（如滨海湾金沙、鱼尾狮公园）：像弯号一样标在地图上，点击镜头飞过去
+(profile.landmarks || []).forEach((lm) => {
+  const el = document.createElement('div');
+  el.className = 'lm glass';
+  el.innerHTML = `<i></i><b>${L(lm, 'name')}</b>`;
+  el.onclick = () => flyToLandmark(lm);
+  labelsEl.appendChild(el);
+  labels.push({ el, pos: V(lm.at[0], lm.at[1], lm.at[2] ?? 12), kind: 'landmark', lm, ax: -0.5, ay: -1, dy: -6 });
+});
+function flyToLandmark(lm) {
+  if (state.mode !== 'overview') goHome();
+  const t = V(lm.at[0], lm.at[1], (lm.at[2] ?? 12) * 0.25), v = lm.view || [-230, 150, 260];
+  flyTo(t.clone().add(new THREE.Vector3(v[0], v[1], v[2])), t, 1.8);
+}
 // 票区标签（进入选座后显示；只有一个票区的看台不重复标注）
 stands.forEach((s) => s.blocks && new Set(s.blocks.map((b) => b.zone)).size > 1 && s.blocks.forEach((b) => {
   const el = document.createElement('div');
@@ -337,41 +342,47 @@ stands.forEach((s) => s.blocks && new Set(s.blocks.map((b) => b.zone)).size > 1 
 }));
 
 // ───────────────────────── UI：小地图 ─────────────────────────
+// 小地图与全景视角同向：orient 'x-up'（上海：屏幕右 = 场景 +z，屏幕上 = 场景 +x）；'north-up'（屏幕右 = 场景 +x，屏幕上 = 场景 -z）
 const mm = (() => {
+  const MM = profile.minimap;
+  const toMM = MM.orient === 'north-up' ? (x, z) => [x, z] : (x, z) => [z, -x];
+  const arrowDeg = (u, v) => (Math.atan2(u, -v) * 180) / Math.PI; // 把“朝上”的图形转到小地图上的方向 (u, v)
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-  // 小地图与主视角同向：屏幕右 = 场景 +z，屏幕上 = 场景 +x
-  const grow = (p, r = 0) => { x0 = Math.min(x0, p.z - r); x1 = Math.max(x1, p.z + r); z0 = Math.min(z0, -p.x - r); z1 = Math.max(z1, -p.x + r); };
+  const grow = (p, r = 0) => { const [u, v] = toMM(p.x, p.z); x0 = Math.min(x0, u - r); x1 = Math.max(x1, u + r); z0 = Math.min(z0, v - r); z1 = Math.max(z1, v + r); };
   track.pts.forEach((p) => grow(p));
   stands.forEach((s) => grow(s.center, 60));
   const pad = 50;
   x0 -= pad; z0 -= pad; x1 += pad; z1 += pad;
   let d = '';
-  for (let i = 0; i < track.N; i += 3) d += (i ? 'L' : 'M') + track.pts[i].z.toFixed(0) + ' ' + (-track.pts[i].x).toFixed(0);
+  for (let i = 0; i < track.N; i += 3) { const [u, v] = toMM(track.pts[i].x, track.pts[i].z); d += (i ? 'L' : 'M') + u.toFixed(0) + ' ' + v.toFixed(0); }
   const turns = TURNS.map(([n, x, y]) => {
     // 弯号放在赛道外侧
     const i = track.nearest(x, -y), k = track.curv[i] < 0 ? 1 : -1;
-    const px = track.pts[i].x + track.nor[i].x * 62 * k, pz = track.pts[i].z + track.nor[i].z * 62 * k;
-    return `<text class="mm-turn" x="${pz.toFixed(0)}" y="${(-px + 14).toFixed(0)}">${n}</text>`;
+    const [u, v] = toMM(track.pts[i].x + track.nor[i].x * MM.turnOffset * k, track.pts[i].z + track.nor[i].z * MM.turnOffset * k);
+    return `<text class="mm-turn" x="${u.toFixed(0)}" y="${(v + 14).toFixed(0)}">${n}</text>`;
   }).join('');
-  const marks = stands.map((s) => `<g class="mm-stand" data-id="${s.spec.id}" transform="translate(${s.center.z.toFixed(0)} ${(-s.center.x).toFixed(0)})">
-      <title>${L(s.spec, 'name')}</title><circle class="mm-ring" r="62"/><circle r="46" fill="${mainColor(s.spec)}"/><text y="17">${s.spec.code}</text></g>`).join('');
+  const marks = stands.map((s) => { const [u, v] = toMM(s.center.x, s.center.z); return `<g class="mm-stand" data-id="${s.spec.id}" transform="translate(${u.toFixed(0)} ${v.toFixed(0)})">
+      <title>${L(s.spec, 'name')}</title><circle class="mm-ring" r="62"/><circle r="46" fill="${mainColor(s.spec)}"/><text y="17">${s.spec.code}</text></g>`; }).join('');
   const el = $('#minimap');
+  const [nu, nv] = toMM(TRUE_NORTH[0], -TRUE_NORTH[1]);
   el.innerHTML = `<svg viewBox="${x0} ${z0} ${x1 - x0} ${z1 - z0}" role="img" aria-label="${tr('赛道小地图', 'Track map')}">
     <path class="mm-track-o" d="${d}Z"/><path class="mm-track" d="${d}Z"/>
-    <line class="mm-start" x1="-120" y1="478" x2="-120" y2="522"/>
+    ${MM.startLine || ''}
     ${turns}${marks}
-    <g id="mmCam"><path d="M0 0 L-70 -150 A165 165 0 0 1 70 -150 Z"/><circle r="20"/></g>
-  </svg><span class="mm-n" style="--north:${((Math.atan2(-TRUE_NORTH[1], TRUE_NORTH[0]) * 180) / Math.PI).toFixed(0)}deg">N</span>`;
+    <g id="mmCam"><g transform="scale(${MM.coneScale || 1})"><path d="M0 0 L-70 -150 A165 165 0 0 1 70 -150 Z"/><circle r="20"/></g></g>
+  </svg><span class="mm-n" style="--north:${arrowDeg(nu, nv).toFixed(0)}deg">N</span>`;
   el.addEventListener('click', (e) => {
     const g = e.target.closest('.mm-stand');
     if (g) selectStand(g.dataset.id);
   });
-  return { cam: el.querySelector('#mmCam'), marks: [...el.querySelectorAll('.mm-stand')], x0, x1, z0, z1 };
+  return { cam: el.querySelector('#mmCam'), marks: [...el.querySelectorAll('.mm-stand')], x0, x1, z0, z1, toMM, arrowDeg };
 })();
 function updateMinimap() {
   const t = controls.target, c = camera.position;
-  const x = THREE.MathUtils.clamp(t.z, mm.x0 + 30, mm.x1 - 30), z = THREE.MathUtils.clamp(-t.x, mm.z0 + 30, mm.z1 - 30);
-  const a = (Math.atan2(t.z - c.z, t.x - c.x) * 180) / Math.PI;
+  const [u, v] = mm.toMM(t.x, t.z);
+  const x = THREE.MathUtils.clamp(u, mm.x0 + 30, mm.x1 - 30), z = THREE.MathUtils.clamp(v, mm.z0 + 30, mm.z1 - 30);
+  const [du, dv] = mm.toMM(t.x - c.x, t.z - c.z);
+  const a = mm.arrowDeg(du, dv);
   mm.cam.setAttribute('transform', `translate(${x.toFixed(0)} ${z.toFixed(0)}) rotate(${a.toFixed(1)})`);
 }
 
@@ -380,13 +391,15 @@ function updateLabels() {
   const w = innerWidth, h = innerHeight;
   const dist = camera.position.distanceTo(controls.target);
   const low = camera.position.y < 40; // 贴近地面时远处的标签会沿地平线挤成一排，只保留近处的
+  const homeDist = HOME.pos.distanceTo(HOME.target); // 全景镜头的距离：手机竖屏的全景比桌面远得多，标签的显示范围随它放宽
   for (const l of labels) {
     _v.copy(l.pos).project(camera);
     let show = _v.z < 1 && Math.abs(_v.x) < 1.1 && Math.abs(_v.y) < 1.1;
-    if (show && low && l.kind !== 'block') show = camera.position.distanceTo(l.pos) < (l.kind === 'stand' ? 450 : 220);
+    if (show && low && l.kind !== 'block' && l.kind !== 'landmark') show = camera.position.distanceTo(l.pos) < (l.kind === 'stand' ? 450 : 220);
     if (l.kind === 'stand') show &&= state.mode !== 'seats' && !(state.mode === 'stand' && state.stand.spec.id === l.id);
     else if (l.kind === 'block') show &&= state.mode === 'seats' && state.stand.spec.id === l.id && camera.position.distanceTo(l.pos) < 330 && camera.position.y > l.pos.y;
-    else show &&= state.mode === 'overview' ? dist < 3200 && !isMobile() : state.mode === 'stand';
+    else if (l.kind === 'landmark') show &&= state.mode !== 'seats' && dist < Math.max(4200, homeDist * 1.3) && !(low && camera.position.distanceTo(l.pos) > 900);
+    else show &&= state.mode === 'overview' ? dist < Math.max(isMobile() ? 0 : 3200, homeDist * 1.15) : state.mode === 'stand';
     l.el.classList.toggle('off', !show);
     if (!show) continue;
     const x = (_v.x * 0.5 + 0.5) * w, y = (-_v.y * 0.5 + 0.5) * h + l.dy;
@@ -400,7 +413,7 @@ const detail = $('#detail');
 function zoneRow(z) {
   const sub = z.day ? `${tr('周五', 'Fri')} ${fmtPrice(z.day.fri)} · ${tr('周六', 'Sat')} ${fmtPrice(z.day.sat)} · ${tr('周日', 'Sun')} ${fmtPrice(z.day.sun)}` : L(z, 'note') || '';
   return `<div class="zone"><i style="background:${z.color}"></i>
-    <div class="zone-main"><b>${L(z, 'name')}</b><em class="tag ok">${tr('官方票价', 'Official')}</em><span>${sub}</span></div>
+    <div class="zone-main"><b>${L(z, 'name')}</b><em class="tag ok">${L(z, 'tag') || tr('官方票价', 'Official')}</em><span>${sub}</span></div>
     <div class="zone-price">${fmtPrice(z.price)}</div></div>`;
 }
 function renderDetail() {
@@ -450,6 +463,10 @@ function renderDetail() {
     ? `<div class="stat"><small>${tr('入口', 'Entrance')}</small><b>${L(spec, 'gate')}</b></div>
        <div class="stat"><small>${tr('模型座位', 'Seats (model)')}</small><b>${s.seats.length.toLocaleString()}</b></div>
        <div class="stat"><small>${tr('官方票区', 'Zones')}</small><b>${new Set(s.blocks.map((b) => b.zone)).size}${tr(' 个', '')}</b></div>`
+    : spec.type === 'block'
+    ? `<div class="stat"><small>${tr('入口', 'Entrance')}</small><b>${L(spec, 'gate')}</b></div>
+       <div class="stat"><small>${tr('通行票区', 'Access zones')}</small><b>${L(spec, 'access')}</b></div>
+       <div class="stat"><small>${tr('3D 体量', '3D volume')}</small><b>${tr('示意', 'Schematic')}</b></div>`
     : `<div class="stat"><small>${tr('入口', 'Entrance')}</small><b>${L(spec, 'gate')}</b></div>
        <div class="stat"><small>${tr('类型', 'Type')}</small><b>${spec.type === 'grass' ? tr('草地', 'Grass') : tr('款待', 'Hospitality')}</b></div>
        <div class="stat"><small>${tr('座位', 'Seating')}</small><b>${spec.type === 'grass' ? tr('不对号', 'Unreserved') : tr('包厢', 'Suite')}</b></div>`;
@@ -461,6 +478,8 @@ function renderDetail() {
     <div class="actions">
       ${spec.type === 'seats'
         ? `<button class="btn primary" data-act="seats"><svg viewBox="0 0 24 24"><path d="M6 11V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4M4 13a2 2 0 0 1 4 0v2h8v-2a2 2 0 0 1 4 0v5H4zM7 18v2M17 18v2"/></svg>${tr('进入选座', 'Choose seats')}</button>`
+        : spec.type === 'block'
+        ? `<button class="btn ghost" disabled>${tr('座位模型未建：官网未公布看台范围与座位图', 'No seat model: the website publishes no stand extent or seat map')}</button>`
         : `<button class="btn ghost" disabled>${spec.type === 'grass' ? tr('草地票不对号入座', 'Grass areas are unreserved') : tr('款待套票需官方渠道预订', 'Hospitality is booked through official channels')}</button>`}
     </div></div>`;
 }
@@ -490,7 +509,9 @@ function syncList() {
   listEl.querySelectorAll('.item').forEach((el) => el.classList.toggle('active', state.stand?.spec.id === el.dataset.id));
   $('#hint').textContent = state.mode === 'seats'
     ? tr('拖动平移 · 右键旋转 · 滚轮缩放 · 点击票区或座位 · 双击进入座位视角 · Esc 返回', 'Drag to move · right-drag to rotate · scroll to zoom · click a zone or seat · double-click for seat view · Esc to go back')
-    : tr('拖动平移 · 右键旋转 · 滚轮缩放（贴地后继续滚动 = 前进）· 点击看台探索', 'Drag to move · right-drag to rotate · scroll to zoom (keep scrolling at ground level to walk) · click a stand');
+    : circuit.hasStands
+      ? tr('拖动平移 · 右键旋转 · 滚轮缩放（贴地后继续滚动 = 前进）· 点击看台探索', 'Drag to move · right-drag to rotate · scroll to zoom (keep scrolling at ground level to walk) · click a stand')
+      : tr('拖动平移 · 右键旋转 · 滚轮缩放（贴地后继续滚动 = 前进）', 'Drag to move · right-drag to rotate · scroll to zoom (keep scrolling at ground level to walk)');
 }
 
 // ───────────────────────── 交互流程 ─────────────────────────
@@ -627,12 +648,13 @@ addEventListener('keydown', (e) => {
 });
 
 const seg = $('#themeSeg');
-function setNight(on) {
+function setNight(on, { instant = false, silent = false } = {}) {
   state.nightTarget = on ? 1 : 0;
+  if (instant) { state.t = state.nightTarget; applyNight(state.t); }
   seg.classList.toggle('night', on);
   seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', (b.dataset.mode === 'night') === on));
   document.documentElement.dataset.theme = on ? 'dark' : 'light';
-  toast(on ? tr('黑夜模式 · 赛道灯光自动开启', 'Night mode · circuit lights on') : tr('白天模式', 'Day mode'));
+  if (!silent) toast(on ? tr('黑夜模式 · 赛道灯光自动开启', 'Night mode · circuit lights on') : tr('白天模式', 'Day mode'));
 }
 seg.addEventListener('click', (e) => {
   const b = e.target.closest('button');
@@ -662,6 +684,7 @@ function applyNight(t) {
   renderer.toneMappingExposure = THREE.MathUtils.lerp(1.0, 1.12, e);
 }
 applyNight(0);
+if (profile.defaultNight) setNight(true, { instant: true, silent: true }); // 夜赛赛道：打开就是夜景
 
 // ───────────────────────── 循环 ─────────────────────────
 function resize() {
@@ -742,13 +765,9 @@ function tick(dt) {
     const near = camera.position.distanceTo(s.center) < 280 + s.L * 0.5 || state.stand === s;
     s.mesh.visible = near; s.carpet.visible = !near;
   }
-  // 车库内部细节：离维修楼 260 m 以内才画（主看台、维修区都在范围内）
-  pitb.axis.closestPointToPoint(camera.position, true, _pitP);
-  const pitNear = camera.position.distanceTo(_pitP) < 260;
-  if (pitb.detail[0].visible !== pitNear) for (const m of pitb.detail) m.visible = pitNear;
   if (pointer && !fly && !down?.dragging) pick(pointer.x, pointer.y);
   cars.update(dt);
-  karting.update(dt);
+  built.update?.(dt, camera); // 赛道自己的逐帧更新（上海：卡丁车、车库内部细节）
   composer.render();
   updateLabels();
   updateMinimap();
@@ -760,15 +779,15 @@ await step(0.88, tr('点亮灯光与材质', 'Lighting and materials'));
 try { await renderer.compileAsync(scene, camera); } catch { /* 不支持异步编译时首帧会同步编译 */ }
 camera.lookAt(controls.target);
 composer.render();
-await step(1, tr('即将抵达上海', 'Arriving in Shanghai'));
+await step(1, tr(`即将抵达${circuit.city}`, `Arriving in ${circuit.cityEn}`));
 await splash?.finish();
 clock.getDelta();
 flyTo(HOME.pos, HOME.target, 2.8); // 开场镜头
 syncList(); // 按当前语言写入底部提示语（HTML 里的是中文占位）
-initGuide(); // 第一次打开时的新手引导
-initAbout(); // 署名与免责声明
+initGuide(profile.info); // 第一次打开时的新手引导
+initAbout(profile.info); // 署名与免责声明
 initShare(toast, () => { composer.render(); return renderer.domElement; }); // 分享按钮：海报取当前画面
-initDrawers(); // 看台列表与赛道信息：平时收起
+initDrawers(profile.info); // 看台列表与赛道信息：平时收起
 // 卫星底图开关：第一次打开时才下载影像
 {
   const btn = $('#pillSat'), credit = $('#satCredit');
@@ -791,6 +810,7 @@ onLang(() => {
   labels.forEach((l) => {
     if (l.kind === 'stand') l.el.innerHTML = standLabel(standById[l.id]);
     else if (l.kind === 'block') l.el.textContent = L(standById[l.id].spec.zones[l.zone], 'name');
+    else if (l.kind === 'landmark') l.el.innerHTML = `<i></i><b>${L(l.lm, 'name')}</b>`;
   });
   const svg = $('#minimap svg'); if (svg) svg.setAttribute('aria-label', tr('赛道小地图', 'Track map'));
   $('#minimap').querySelectorAll('.mm-stand').forEach((g) => { const ti = g.querySelector('title'); if (ti) ti.textContent = L(standById[g.dataset.id].spec, 'name'); });
@@ -798,4 +818,10 @@ onLang(() => {
 });
 requestAnimationFrame(frame);
 
-window.__app = { state, camera, controls, scene, renderer, stands, selectStand, enterSeats, goHome, setNight, toggleSeat, seatView, track, dolly, get seatCam() { return seatCam; }, perf };
+/** 切换赛道的第一段：退出选座，镜头升到高空（与启动页“从高空俯冲下来”的镜头方向相反），地球随后盖上来 */
+function liftOff() {
+  clearHover();
+  const t = controls.target.clone().setY(0);
+  flyTo(t.clone().add(new THREE.Vector3(-500, 6000, 0)), t, 1.7);
+}
+window.__app = { state, camera, controls, scene, renderer, stands, selectStand, enterSeats, goHome, setNight, toggleSeat, seatView, track, dolly, liftOff, get seatCam() { return seatCam; }, perf };

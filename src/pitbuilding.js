@@ -9,11 +9,9 @@
 // 车队名称牌用文字绘制；如在 public/brand/manifest.json 中提供了授权的车队标志，会自动替换上去。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { OSM_STANDS } from './osm-data.js';
-import { TEAMS } from './data.js';
+import { TEAMS } from './teams.js';
 import { f1CarGeometry } from './f1car.js';
 import { V, rng, std, floodlit, lampMat, canvasTex, nightEmissives } from './util.js';
-import { TRACK_POINTS } from './track-data.js';
 import { crewGeo, tyreGeo, blanketGeo, tyreTex, blanketTex, hoseGeo, jackGeo, blobTex, garageFloorTex, garageCeilTex, garageWallTex } from './garagekit.js';
 import { screenAtlas, screenGeo } from './pitscreens.js';
 
@@ -112,8 +110,18 @@ function teamWall(team, brand) {
   return tex;
 }
 
-export function buildPitBuilding(scene, brand = null) {
-  const P = OSM_STANDS.P[0];
+/**
+ * cfg（由各赛道档案提供）：
+ *   P            维修楼立面框架 { front: [x, n] 面向赛道一侧的立面中点, f: [x, n] 由楼指向赛道的单位向量, L: 立面长, D: 进深 }
+ *   trackPoints  赛道中心线（遥测屏上的赛道图）
+ *   nB           车库开间数（默认 36 = 11 队 × 3 间 + 备用）
+ *   band         车库层上方广告带上的文字
+ *   trackLabel   遥测屏赛道图的标题 { name, km }
+ *   tvLive       二层大屏上的 LIVE 文字
+ *   podium       是否在立面外侧建领奖台（默认是）
+ */
+export function buildPitBuilding(scene, brand = null, cfg) {
+  const P = cfg.P;
   const f = new THREE.Vector3(P.f[0], 0, -P.f[1]).normalize();
   const G = new THREE.Group();
   G.position.copy(V(P.front[0], P.front[1]));
@@ -158,7 +166,7 @@ export function buildPitBuilding(scene, brand = null) {
   add(box(L - 6, 4.0, 0.1), glass, 0, 9.0, D + 0.02, false);        // 背立面（面向围场）的长玻璃立面
   // 车库层上方的广告带（黑白相间）
   const bandTex = canvasTex(1024, 64, (c, w, h) => {
-    const items = ['FORMULA 1', '中国大奖赛', 'CHINESE GRAND PRIX', '上海国际赛车场', 'SHANGHAI 2026', 'FORMULA 1'];
+    const items = cfg.band ?? ['FORMULA 1', '中国大奖赛', 'CHINESE GRAND PRIX', '上海国际赛车场', 'SHANGHAI 2026', 'FORMULA 1'];
     const pw = w / items.length;
     items.forEach((s, i) => {
       c.fillStyle = i % 2 ? '#ffffff' : '#111114'; c.fillRect(i * pw, 0, pw, h);
@@ -184,7 +192,7 @@ export function buildPitBuilding(scene, brand = null) {
     const g = c.createLinearGradient(0, 0, w, h); g.addColorStop(0, '#0d1b2e'); g.addColorStop(1, '#22344f');
     c.fillStyle = g; c.fillRect(0, 0, w, h);
     c.fillStyle = '#e10600'; c.fillRect(0, h - 22, w, 22);
-    c.fillStyle = '#fff'; c.font = '700 13px Arial'; c.fillText('LIVE · SHANGHAI', 10, h - 7);
+    c.fillStyle = '#fff'; c.font = '700 13px Arial'; c.fillText(cfg.tvLive ?? 'LIVE · SHANGHAI', 10, h - 7);
     c.fillStyle = 'rgba(255,255,255,0.85)'; c.font = '800 34px Arial'; c.textAlign = 'center'; c.fillText('F1', w / 2, h / 2 - 4);
   });
   for (const sx of [-0.25, 0.25]) {
@@ -196,7 +204,7 @@ export function buildPitBuilding(scene, brand = null) {
   const strut = batch(new THREE.CylinderGeometry(0.09, 0.09, 1, 8), steel, G);
 
   // ── 车库开间 ──
-  const nB = 36;                       // 上海赛车场比赛工作楼共 36 个车库
+  const nB = cfg.nB ?? 36;             // 上海赛车场比赛工作楼共 36 个车库（施工报道）
   const bayW = (L - 8) / nB;
   const x0 = -(nB * bayW) / 2;
   // 维修通道入口在 n 较小的一端（16 号弯）：第 0 个开间放在离入口最近的一端
@@ -226,7 +234,7 @@ export function buildPitBuilding(scene, brand = null) {
   const trolley = batch(box(0.9, 1.0, 0.6).translate(0, 0.55, 0), floodlit(new THREE.MeshStandardMaterial({ map: drawerTex, roughness: 0.45, metalness: 0.3 }), 0.4), G);
   const trolleyTop = batch(box(0.94, 0.04, 0.64), steel, G);
   // 屏幕：四种专业界面（遥测 / 计时榜 / 赛道图 / 车辆状态）共用一张图集
-  const teleTex = screenAtlas(TEAMS, TRACK_POINTS);
+  const teleTex = screenAtlas(TEAMS, cfg.trackPoints, cfg.trackLabel);
   const teleMat = new THREE.MeshStandardMaterial({ map: teleTex, emissive: '#ffffff', emissiveMap: teleTex, emissiveIntensity: 0.95, roughness: 0.3 });
   const screenB = [0, 1, 2, 3].map((i) => batch(screenGeo(i), teleMat, G));
   const bigScreenB = [0, 1, 2, 3].map((i) => batch(screenGeo(i, 1.5, 0.9), teleMat, G));
@@ -426,7 +434,7 @@ export function buildPitBuilding(scene, brand = null) {
   const prail = new THREE.Mesh(new THREE.PlaneGeometry(24, 1.0), glassRail); prail.position.set(0, 7.95, -6.2);
   podium.add(plat, back, prail);
   [[0, 1.0], [-2.8, 0.7], [2.8, 0.45]].forEach(([x, h]) => { const b = new THREE.Mesh(box(2.4, h, 1.8), white); b.position.set(x, 7.45 + h / 2, -3.6); podium.add(b); });
-  G.add(podium);
+  if (cfg.podium !== false) G.add(podium);
 
   scene.add(G);
   inst.forEach((c) => scene.add(c));

@@ -3,13 +3,12 @@
 //   top  —— 从地面实心到此高度：建筑、维修楼；看台与草坡按坡面高度计入，所以镜头可以贴着座位、草坡“站”上去
 //   band —— 悬空的构件：主看台顶棚、两端的“翼”、荷叶顶棚等（OSM 中带 min_height 的部件）
 // 每帧只在镜头移动时查一下镜头周围的 3×3 个格子：碰到建筑就越过楼顶，碰到顶棚就停在顶棚下沿或上方。
-import { OSM_BUILDINGS, OSM_VENUE } from './osm-data.js';
-
 const CELL = 2.5, Q = 4;          // 高度量化：0.25 m 一级，Uint8 最多 63.75 m
 const EYE = 1.7;                  // 镜头离地面、看台坡面、草坡的最小高度（人眼）
 const ROOF = 8;                   // 离建筑屋面、顶棚上沿的最小高度（太贴近只会看到一片屋面）
 
-export function buildCamLimits(stands) {
+/** data：{ buildings, venue } —— 当前赛道的 OSM 建筑与场地红线（由赛道档案提供） */
+export function buildCamLimits(stands, { buildings: OSM_BUILDINGS, venue: OSM_VENUE }) {
   // 场地范围：OSM 赛车场红线的外接矩形
   let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
   for (let i = 0; i < OSM_VENUE.length; i += 2) {

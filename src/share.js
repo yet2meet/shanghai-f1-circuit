@@ -1,8 +1,9 @@
 // 分享：点击后生成一张“当前视角”海报（标题 + 场景画面 + 二维码），下方可复制图片或只复制网址。
 // 微信内置浏览器不允许网页写入图片到剪贴板，改为提示“长按图片发送给朋友”（微信原生菜单，还能识别二维码）。
-import { t, onLang, isEn } from './i18n.js';
+import { t, L, onLang, isEn } from './i18n.js';
+import { circuit, shareUrl } from './circuits/index.js';
 
-const URL = 'https://shanghai-f1-circuit.pages.dev/';
+const URL = shareUrl('https://shanghai-f1-circuit.pages.dev/'); // 非默认赛道带 ?c=，朋友打开直接看到同一条赛道
 const ICON = '<svg viewBox="0 0 24 24"><path d="M12 15V4M8 7.5 12 3.5l4 4M6 11H5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1h-1"/></svg>';
 const wechat = /MicroMessenger/i.test(navigator.userAgent);
 const canCopyImage = !wechat && !!(navigator.clipboard && window.ClipboardItem);
@@ -21,9 +22,9 @@ async function makePoster(snapshot) {
   // 头部：F1 标志 + 名称
   const lg = g.createLinearGradient(72, 72, 160, 160); lg.addColorStop(0, '#ff1e1e'); lg.addColorStop(1, '#c00000');
   g.fillStyle = lg; rr(g, 72, 72, 96, 96, 26); g.fill(); g.drawImage(logo, 86, 104, 68, 17);
-  g.fillStyle = '#1d1d1f'; g.font = font(700, 54); g.fillText(isEn() ? 'Shanghai International Circuit' : '上海国际赛车场', 196, 128, W - 260);
+  g.fillStyle = '#1d1d1f'; g.font = font(700, 54); g.fillText(L(circuit, 'name'), 196, 128, W - 260);
   g.fillStyle = 'rgba(60,60,67,0.7)'; g.font = font(500, 30);
-  g.fillText(isEn() ? 'FORMULA 1 Chinese Grand Prix · 5.451 km · 16 turns' : 'Shanghai International Circuit · F1 中国大奖赛', 196, 172, W - 260);
+  g.fillText(isEn() ? `FORMULA 1 ${circuit.gpEn} · ${circuit.km} km · ${circuit.turns} turns` : `${circuit.nameEn} · F1 ${circuit.gp}`, 196, 172, W - 260);
   // 画面：当前视角，按比例裁切铺满
   const src = snapshot(), sx = 72, sy = 230, sw = W - 144, sh = 900;
   g.save(); rr(g, sx, sy, sw, sh, 36); g.clip();
@@ -38,10 +39,12 @@ async function makePoster(snapshot) {
   g.fillStyle = '#1d1d1f';
   for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (qr.isDark(r, col)) g.fillRect(qx + col * cell, qy + r * cell, Math.ceil(cell), Math.ceil(cell));
   g.fillStyle = '#1d1d1f'; g.font = font(700, 40);
-  g.fillText(isEn() ? 'Scout your seat before race day' : '开赛前，先来踩个点', 72, 1236, 700);
+  g.fillText(isEn() ? (circuit.hasStands ? 'Scout your seat before race day' : 'Walk the circuit before race day') : '开赛前，先来踩个点', 72, 1236, 700);
   // 两行说明等长（各 13 字），行动号召做成红色胶囊，长短对比是有意的
   g.fillStyle = 'rgba(60,60,67,0.75)'; g.font = font(500, 29);
-  const lines = isEn() ? ['Try any seat before you go', 'Day, night or satellite view'] : ['每个座位，都能先坐上去看看', '白天黑夜，卫星实景，一键切换'];
+  const lines = circuit.hasStands
+    ? (isEn() ? ['Try any seat before you go', 'Day, night or satellite view'] : ['每个座位，都能先坐上去看看', '白天黑夜，卫星实景，一键切换'])
+    : (isEn() ? ['Roam the street circuit freely', 'Day, night or satellite view'] : ['在街道赛道上，自由漫游', '白天黑夜，卫星实景，一键切换']);
   lines.forEach((s, i) => g.fillText(s, 72, 1290 + i * 42, 660));
   const cta = isEn() ? (wechat ? 'Long-press to step in  →' : 'Scan to step in  →') : (wechat ? '长按识别 · 进场  →' : '扫码进场  →');
   g.font = font(700, 26);

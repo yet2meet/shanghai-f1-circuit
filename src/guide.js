@@ -1,35 +1,44 @@
 // 新手引导：第一次打开时逐步指出主要操作；右上角“?”可随时重看
-import { t, onLang } from './i18n.js';
+import { t, L, onLang } from './i18n.js';
+import { CIRCUITS, circuit } from './circuits/index.js';
 
-const KEY = 'sic-guide-v4'; // 操作方式改为自由视角后升级版本号，老用户也会再看到一次
+const KEY = 'sic-guide-v5'; // 新增“切换赛道”并按赛道定制后升级版本号，老用户也会再看到一次
+let info = null; // 当前赛道档案的 info
 
 const mobile = () => innerWidth <= 860;
-const STEPS = [
-  { icon: '🏁', title: () => t('欢迎来到上海国际赛车场', 'Welcome to Shanghai International Circuit'),
-    body: () => t('赛道、看台与建筑均按真实测绘数据还原。花 20 秒了解几个基本操作。', 'The track, grandstands and buildings are rebuilt from real survey data. Here are the basics in 20 seconds.') },
+// 步骤按当前赛道定制：没有看台的赛道不讲“看台与票价”“选座”，弯道数、夜间说明随赛道变化
+const switchNames = () => CIRCUITS.map((c) => L(c, 'name')).join(t('、', ', '));
+const buildSteps = () => [
+  { icon: '🏁', title: () => t(`欢迎来到${circuit.name}`, `Welcome to ${circuit.nameEn}`),
+    body: () => info.guide.welcome() },
+  { target: '#brand', title: () => t('切换赛道', 'Switch circuit'),
+    body: () => t(`点这里可以在不同赛道之间切换（现有：${switchNames()}）。每次打开会回到你上次退出时看的赛道，第一次来默认是上海。`, `Tap here to switch between circuits (available: ${switchNames()}). Next time you open the site you will land on the circuit you last left; first-time visitors start in Shanghai.`) },
   { icon: '🖐', title: () => t('自由查看', 'Look around'),
     body: () => (mobile()
       ? t('单指拖动移动，双指捏合缩放，双指拖动旋转视角。一直放大到地面后继续放大，就能向前走，可以站在任何位置观察。', 'Drag with one finger to move, pinch to zoom, drag with two fingers to rotate. Keep zooming in at ground level to walk forward and look from anywhere.')
       : t('按住左键拖动移动，右键拖动旋转视角，滚轮朝鼠标所指处缩放。一直放大到地面后继续滚动，就能向前走，可以站在任何位置观察。', 'Left-drag to move, right-drag to rotate, scroll to zoom towards the pointer. Keep scrolling at ground level to walk forward and look from anywhere.')) },
-  { target: '#pillList', title: () => t('看台与票价', 'Grandstands & prices'),
-    body: () => t('点这里展开看台列表，查看每个看台的位置和官方票价。点击任一看台，镜头会飞到那里，并显示看台详情。', 'Tap here to open the list of grandstands with their locations and official prices. Pick one to fly there and see its details.') },
+  ...(circuit.hasStands ? [{ target: '#pillList', title: () => t('看台与票价', 'Grandstands & prices'),
+    body: () => t('点这里展开看台列表，查看每个看台的位置和官方票价。点击任一看台，镜头会飞到那里，并显示看台详情。', 'Tap here to open the list of grandstands with their locations and official prices. Pick one to fly there and see its details.') }] : []),
   { target: '#pillInfo', title: () => t('赛道信息', 'Circuit info'),
     body: () => t('赛道长度、圈数、弯道、圈速纪录等基本信息都在这里。', 'Track length, laps, corners, lap record and other key facts.') },
-  { title: () => t('选座与座位视角', 'Seats & seat view'), icon: '💺',
-    body: () => t('在看台详情里点「进入选座」，再点选座位；双击座位或点「座位视角」，就能坐在这个座位上看赛道。', 'In a stand’s details, choose "Choose seats" and pick a seat. Double-click it or press "Seat view" to see the track from that seat.') },
+  ...(circuit.hasSeats ? [{ title: () => t('选座与座位视角', 'Seats & seat view'), icon: '💺',
+    body: () => t('在看台详情里点「进入选座」，再点选座位；双击座位或点「座位视角」，就能坐在这个座位上看赛道。', 'In a stand’s details, choose "Choose seats" and pick a seat. Double-click it or press "Seat view" to see the track from that seat.') }] : []),
   { target: '#minimap', title: () => t('赛道小地图', 'Track map'),
-    body: () => t('小地图标出了 16 个弯道和各看台的位置，点击看台圆点也能直接跳转。', 'The map shows all 16 turns and every stand — click a stand’s dot to jump there.') },
+    body: () => t(`小地图标出了 ${circuit.turns} 个弯道和各看台的位置，点击看台圆点也能直接跳转。`, `The map shows all ${circuit.turns} turns and every stand — click a stand’s dot to jump there.`) },
   { target: '#pillSat', title: () => t('卫星图', 'Satellite view'),
     body: () => t('把底图换成真实卫星影像，赛道、看台和建筑都与影像一一对齐；再点一下切回模型底图。', 'Swap the ground for real satellite imagery — the track, stands and buildings line up with it exactly. Tap again to switch back.') },
   { target: '#themeSeg', title: () => t('白天 / 黑夜', 'Day / night'),
-    body: () => t('切换到黑夜，赛道照明、看台和建筑的灯光会自动亮起。', 'Switch to night and the circuit floodlights, stands and buildings light up.') },
+    body: () => info.guide.night() },
   { target: '#langSeg', title: () => t('中文 / English', 'English / 中文'),
     body: () => t('随时切换界面语言。', 'Switch the interface language at any time.') },
   { target: '.dock', title: () => t('回到全景', 'Back to overview'),
     body: () => t('看迷路了？随时点「全景」回到俯瞰视角。现在开始探索吧。', 'Lost? Press "Overview" to return to the bird’s-eye view. Enjoy exploring.') },
 ];
+let STEPS = [];
 
-export function initGuide({ force = false } = {}) {
+export function initGuide(circuitInfo, { force = false } = {}) {
+  info = circuitInfo;
+  STEPS = buildSteps();
   let seen = false;
   try { seen = localStorage.getItem(KEY) === '1'; } catch { /* 无痕模式等 */ }
   addHelpButton();

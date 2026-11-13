@@ -2,23 +2,7 @@
 // 与赛道、建筑使用同一套经纬度 → 场景坐标换算（tools/projection.json），所以影像与模型一一对应。
 // 只在用户打开开关时才下载（约 70 张 z17 瓦片，约 1–2 MB），拼成一张纹理贴在一块按瓦片角点投影的网格上。
 import * as THREE from 'three';
-import P from '../tools/projection.json';
-import { OSM_VENUE } from './osm-data.js';
-
 const D2R = Math.PI / 180;
-const kx = D2R * P.R * Math.cos(P.LAT0 * D2R), ky = D2R * P.R;
-/** 经纬度 → 场景 (x, n)，与 tools/proj.mjs 完全一致 */
-function toScene(lon, lat) {
-  const de = (lon - P.lon0) * kx - P.M[0], dn = (lat - P.LAT0) * ky - P.M[1];
-  return [-500 + de * P.r[0] + dn * P.r[1], 25 + de * P.d[0] + dn * P.d[1]];
-}
-/** 场景 (x, n) → 经纬度（上式的逆） */
-function toLonLat(x, n) {
-  const a = x + 500, b = n - 25;
-  const det = P.r[0] * P.d[1] - P.r[1] * P.d[0];
-  const de = (a * P.d[1] - b * P.r[1]) / det, dn = (b * P.r[0] - a * P.d[0]) / det;
-  return [(de + P.M[0]) / kx + P.lon0, (dn + P.M[1]) / ky + P.LAT0];
-}
 const tileX = (lon, z) => ((lon + 180) / 360) * 2 ** z;
 const tileY = (lat, z) => ((1 - Math.log(Math.tan(lat * D2R) + 1 / Math.cos(lat * D2R)) / Math.PI) / 2) * 2 ** z;
 const lonOf = (x, z) => (x / 2 ** z) * 360 - 180;
@@ -27,7 +11,21 @@ const URL = (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/W
 
 export const SAT_CREDIT = 'Esri, Maxar, Earthstar Geographics';
 
-export function createSatellite(scene, { mobile = false } = {}) {
+/** projection：赛道档案的投影参数（tools/gen-*.mjs 生成）；venue：场地红线 [x, n, …]，决定影像覆盖范围 */
+export function createSatellite(scene, { mobile = false, projection: P, venue: OSM_VENUE }) {
+  const kx = D2R * P.R * Math.cos(P.LAT0 * D2R), ky = D2R * P.R;
+  /** 经纬度 → 场景 (x, n)，与 tools/proj.mjs 完全一致 */
+  const toScene = (lon, lat) => {
+    const de = (lon - P.lon0) * kx - P.M[0], dn = (lat - P.LAT0) * ky - P.M[1];
+    return [-500 + de * P.r[0] + dn * P.r[1], 25 + de * P.d[0] + dn * P.d[1]];
+  };
+  /** 场景 (x, n) → 经纬度（上式的逆） */
+  const toLonLat = (x, n) => {
+    const a = x + 500, b = n - 25;
+    const det = P.r[0] * P.d[1] - P.r[1] * P.d[0];
+    const de = (a * P.d[1] - b * P.r[1]) / det, dn = (b * P.r[0] - a * P.d[0]) / det;
+    return [(de + P.M[0]) / kx + P.lon0, (dn + P.M[1]) / ky + P.LAT0];
+  };
   let mesh = null, loading = null, on = false;
   const hidden = [];
 
