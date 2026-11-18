@@ -49,7 +49,7 @@ export const SG_STANDS = [
     gate: '2 号门', gateEn: 'Gate 2', access: 'Zone 1–4', accessEn: 'Zones 1–4',
     desc: `沿起终点直道，在维修通道出口旁，视野正对 1 号弯。通行票区 Zone 1–4。${NOTE}`,
     descEn: `Along the pit straight beside the pit lane exit, with exceptional views of Turn 1. Access zones 1–4. ${NOTE_EN}`,
-    at: { pit: 0.9 }, side: 'left', size: [60, 9, 7],
+    at: { pit: 0.93 }, side: 'left', size: [36, 4, 4.6], // 贴近 1 号弯，留出步行桥与维修通道的净空
   }),
   mk('T1', 'T1', '1 号弯看台', 'Turn 1 Grandstand', 1798, {
     turns: '起终点直道尽头 · 1 号弯', turnsEn: 'End of the pit straight · Turn 1',
@@ -70,7 +70,7 @@ export const SG_STANDS = [
     gate: '2 号门', gateEn: 'Gate 2', access: 'Zone 1–4', accessEn: 'Zones 1–4',
     desc: `位于 5 号弯，沿 Raffles Boulevard、行驶方向左侧，正对车手压入 5 号右弯。另含新加坡摩天轮的免费乘坐（先到先得）。通行票区 Zone 1–4。${NOTE}`,
     descEn: `At Turn 5 along Raffles Boulevard on the drivers’ left, facing the sharp Turn 5 right-hander. Includes complimentary Singapore Flyer rides (first come, first served). Access zones 1–4. ${NOTE_EN}`,
-    at: { turn: 5 }, side: 'left', size: [70, 11, 8],
+    at: { turn: 5 }, side: 'left', size: [46, 7, 8],
   }),
   mk('RP', 'RP', 'Republic 看台', 'Republic Grandstand', 1038, {
     turns: '5 号弯 · 行驶方向右侧', turnsEn: 'Turn 5 · drivers’ right',
@@ -84,42 +84,42 @@ export const SG_STANDS = [
     gate: '3B、4、5、6 号门', gateEn: 'Gates 3B, 4, 5, 6', access: 'Zone 4', accessEn: 'Zone 4',
     desc: `位于 7、8 号弯之间，视野里是灯火通明的城市天际线。通行票区仅 Zone 4。另有青少年票（三日票 S$438）。${NOTE}`,
     descEn: `Between Turns 7 and 8, framed by the illuminated city skyline. Access zone 4 only. A junior pass is also sold (3-day S$438). ${NOTE_EN}`,
-    at: { between: [7, 8], t: 0.5 }, side: 'right', size: [90, 11, 8],
+    at: { between: [7, 8], t: 0.5 }, side: 'right', size: [90, 7, 8],
   }),
   mk('PD', 'PD', 'Padang 看台', 'Padang Grandstand', 768, {
     turns: '9、10 号弯之间 · 行驶方向左侧 · 靠近 Padang 球迷区', turnsEn: 'Between Turns 9 and 10 · drivers’ left · beside the Padang Fan Zone',
     gate: '3A、4、5、6、7 号门', gateEn: 'Gates 3A, 4, 5, 6, 7', access: 'Zone 4', accessEn: 'Zone 4',
     desc: `位于 9、10 号弯之间、行驶方向左侧，离 Padang 球迷区最近；车手从这里冲向 10 号弯（旧称 Singapore Sling）。通行票区仅 Zone 4。${NOTE}`,
     descEn: `Between Turns 9 and 10 on the drivers’ left, the grandstand closest to the Padang Fan Zone; cars charge towards Turn 10, formerly the Singapore Sling. Access zone 4 only. ${NOTE_EN}`,
-    at: { between: [9, 10], t: 0.5 }, side: 'left', size: [150, 11, 8],
+    at: { between: [9, 10], t: 0.66 }, side: 'left', size: [138, 11, 8],
   }),
   mk('EM', 'EM', 'Empress 看台', 'Empress Grandstand', 768, {
     turns: '11、12 号弯之间 · 市政区 · Anderson Bridge', turnsEn: 'Between Turns 11 and 12 · Civic District · Anderson Bridge',
     gate: '4、5、6 号门', gateEn: 'Gates 4, 5, 6', access: 'Zone 4', accessEn: 'Zone 4',
     desc: `位于 11、12 号弯之间的市政区（Civic District），车手从 Anderson Bridge 的拱洞下驶过。通行票区仅 Zone 4。${NOTE}`,
     descEn: `Between Turns 11 and 12 in the historic Civic District, with cars sweeping under the arches of the Anderson Bridge. Access zone 4 only. ${NOTE_EN}`,
-    at: { between: [11, 12], t: 0.75 }, side: 'right', size: [60, 11, 8],
+    at: { between: [11, 12], t: 0.9 }, side: 'right', size: [48, 11, 8], frontOffset: 17,
   }),
   mk('CN', 'CN', 'Connaught 看台', 'Connaught Grandstand', 768, {
     turns: '14 号弯 · 俯瞰 Esplanade 桥高速段', turnsEn: 'Turn 14 · overlooking the run across Esplanade Bridge',
     gate: '3A、4、5、6、7 号门', gateEn: 'Gates 3A, 4, 5, 6, 7', access: 'Zone 4', accessEn: 'Zone 4',
     desc: `位于 14 号弯，俯瞰车手高速驶过 Esplanade 桥并刹车入 14 号弯；附近的 Jubilee 桥也是观景点。通行票区仅 Zone 4。${NOTE}`,
     descEn: `At Turn 14, overlooking the high-speed run across the Esplanade Bridge and the braking zone for Turn 14; the nearby Jubilee Bridge also offers a setting. Access zone 4 only. ${NOTE_EN}`,
-    at: { between: [13, 14], t: 0.88 }, side: 'left', size: [100, 11, 8],
+    at: { between: [13, 14], t: 0.88 }, side: 'left', size: [88, 11, 8],
   }),
   mk('BF', 'BF', 'Bayfront 看台', 'Bayfront Grandstand', 1488, {
     turns: '17 号弯 · 本杰明·海勒斯大桥下', turnsEn: 'Turn 17 · beneath the Benjamin Sheares Bridge',
     gate: '8 号门（也可经 1、2 号门）', gateEn: 'Gate 8 (or Gates 1, 2)', access: 'Zone 1–4', accessEn: 'Zones 1–4',
     desc: `位于 17 号弯，在本杰明·海勒斯大桥（Benjamin Sheares Bridge）下方；车手过 16、17 号弯后，从看台和新加坡摩天轮前加速驶过。通行票区 Zone 1–4。${NOTE}`,
     descEn: `At Turn 17 beneath the Benjamin Sheares Bridge; drivers negotiate Turns 16 and 17 before accelerating past the grandstand and the Singapore Flyer. Access zones 1–4. ${NOTE_EN}`,
-    at: { turn: 17 }, side: 'right', size: [70, 11, 8],
+    at: { turn: 17 }, side: 'right', size: [34, 7, 4.6],
   }),
   mk('MB', 'MB', 'Marina Bay 看台', 'Marina Bay Grandstand', 1798, {
     turns: '18 号弯 · 最后两个弯', turnsEn: 'Turn 18 · the last two corners',
     gate: '8 号门', gateEn: 'Gate 8', access: 'Zone 1–4', accessEn: 'Zones 1–4',
     desc: `位于 18 号弯，可以看到车手冲出最后两个弯、驶上起终点直道。通行票区 Zone 1–4。${NOTE}`,
     descEn: `At Turn 18, where drivers tackle the last two corners before charging onto the pit straight. Access zones 1–4. ${NOTE_EN}`,
-    at: { turn: 18 }, side: 'right', size: [70, 11, 8],
+    at: { turn: 18 }, side: 'right', size: [70, 5, 8],
   }),
 ];
 

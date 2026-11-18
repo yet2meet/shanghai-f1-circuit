@@ -56,12 +56,12 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
   const underBridge = (x, n) => elevated.some((l) => segD(x, n, l.p) < l.w / 2 + 2);
 
   /** 沿赛道扫掠足迹上的采样点：返回 [与建筑 / 水面重叠数, 在高架桥下的点数] */
-  const probe = (i, side, L, D, shiftPts) => {
+  const probe = (i, side, L, D, shiftPts, frontOffset) => {
     const ks = ptsOf((i + shiftPts + N) % N, L);
     let bad = 0, under = 0, total = 0;
     for (let j = 0; j < ks.length; j += Math.max(1, Math.floor(ks.length / 7))) {
       const P = track.pts[ks[j]], nor = track.nor[ks[j]];
-      for (let d = FRONT; d <= FRONT + D; d += D / 3) {
+      for (let d = frontOffset; d <= frontOffset + D; d += D / 3) {
         const x = P.x + nor.x * side * d, n = -(P.z + nor.z * side * d);
         total++;
         if (solids.some((b) => inPoly(x, n, b.p)) || water.some((w) => inPoly(x, n, w.p))) bad++;
@@ -72,7 +72,7 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
   };
 
   /** 沿赛道扫掠出阶梯状座席：每排一条与赛道平行的弧；顶面、前立面、后墙、两端面 */
-  function sweep(ks, side, start, rows, rise, base, hBack) {
+  function sweep(ks, side, frontOffset, rows, rise, base, hBack) {
     const pos = [], nor = [], idx = [];
     const out = ks.map((k) => new THREE.Vector3(track.nor[k].x * side, 0, track.nor[k].z * side));
     const at = (j, d, y) => { const P = track.pts[ks[j]]; return [P.x + out[j].x * d, y, P.z + out[j].z * d]; };
@@ -83,7 +83,7 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
     };
     const last = ks.length - 1;
     for (let r = 0; r < rows; r++) {
-      const d0 = FRONT + start + r * ROW_D, d1 = d0 + ROW_D;
+      const d0 = frontOffset + r * ROW_D, d1 = d0 + ROW_D;
       const hTop = base + (r + 1) * rise, hPrev = r ? base + r * rise : 0;
       for (let j = 0; j < last; j++) {
         quad(at(j, d0, hTop), at(j, d1, hTop), at(j + 1, d1, hTop), at(j + 1, d0, hTop), [0, 1, 0]);                          // 座席面
@@ -94,7 +94,7 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
         quad(at(j, d0, 0), at(j, d1, 0), at(j, d1, hTop), at(j, d0, hTop), [tn.x * sgn, 0, tn.z * sgn]);
       }
     }
-    const dB = FRONT + start + rows * ROW_D;
+    const dB = frontOffset + rows * ROW_D;
     for (let j = 0; j < last; j++) quad(at(j, dB, 0), at(j + 1, dB, 0), at(j + 1, dB, hBack), at(j, dB, hBack), [out[j].x, 0, out[j].z]); // 后墙
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -112,6 +112,7 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
   for (const spec of SG_STANDS) {
     const [L, D0, H0] = spec.size;
     const parent = spec.behind && byId[spec.behind];
+    const frontOffset = parent?.frontOffset ?? spec.frontOffset ?? FRONT;
     let i = parent ? parent.i : anchorIndex(spec.at);
     // 每个看台在官方位置附近（沿赛道 ±60 m）挑一个不压建筑、不入水的位置；没写明方向的看台两侧都试，优先赛道外侧；
     // 除了官网写明“在桥下”的 Bayfront，其余尽量避开高架桥的投影
@@ -121,7 +122,7 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
       const sides = side ? [side] : [track.curv[i] < 0 ? 1 : -1, track.curv[i] < 0 ? -1 : 1]; // 曲率 < 0 为右弯，外侧在左
       let best = Infinity;
       for (const sd of sides) for (const sh of [0, 12, -12, 24, -24, 36, -36, 48, -48, 60, -60].map((m) => Math.round(m / mPerPt))) {
-        const [bad, under, total] = probe(i, sd, L, D0, sh);
+        const [bad, under, total] = probe(i, sd, L, D0, sh, frontOffset);
         const c = bad + (spec.id === 'BF' ? 0 : under * 0.6) + Math.abs(sh) * mPerPt * 0.02 + (sd === sides[0] ? 0 : 0.5) + (total ? 0 : 99);
         if (c < best) { best = c; side = sd; shift = sh; }
       }
@@ -130,18 +131,18 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
     const ks = ptsOf(i, L);
     // 弯道内侧的看台：座席弧的半径不能小于到赛道中心线的距离，否则会折叠，把进深收到不折叠为止
     let D = D0;
-    for (const k of ks) { const c = track.curv[k] * side; if (c > 1e-4) D = Math.min(D, Math.max(3, 1 / c - FRONT - 3)); }
+    for (const k of ks) { const c = track.curv[k] * side; if (c > 1e-4) D = Math.min(D, Math.max(3, 1 / c - frontOffset - 3)); }
     // 在高架桥下的部分限高，不让座席穿过桥面
     let H = H0;
     for (let j = 0; j < ks.length; j += 4) {
       const P = track.pts[ks[j]], nor = track.nor[ks[j]];
-      if (underBridge(P.x + nor.x * side * (FRONT + D / 2), -(P.z + nor.z * side * (FRONT + D / 2)))) { H = Math.min(H, UNDER_H); break; }
+      if (underBridge(P.x + nor.x * side * (frontOffset + D / 2), -(P.z + nor.z * side * (frontOffset + D / 2)))) { H = Math.min(H, UNDER_H); break; }
     }
-    const start = parent ? parent.D : 0;                     // 叠在后面的上层座席接着前一块的高度
+    const seatFront = frontOffset + (parent ? parent.D : 0); // 上层座席接在前一块后面
     const base = parent ? parent.H - 0 : 0.3;
     const rows = Math.max(3, Math.round(D / ROW_D)), rise = (H - (parent ? 0 : 0.3)) / rows;
     const topY = (r) => base + (r + 1) * rise;
-    const surface = new THREE.Mesh(sweep(ks, side, start, rows, rise, base, base + H + 0.5), matFor(spec.color));
+    const surface = new THREE.Mesh(sweep(ks, side, seatFront, rows, rise, base, base + H + 0.5), matFor(spec.color));
     surface.castShadow = surface.receiveShadow = true;
     scene.add(surface);
 
@@ -150,7 +151,7 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
     const seats = [], baseA = [], rotA = [], rowSpans = [], rowQuads = [];
     const segLen = Math.max(4, Math.round(25 / mPerPt)), nSeg = Math.ceil((ks.length - 1) / segLen);
     for (let r = 0; r < rows; r++) {
-      const d = FRONT + start + (r + 0.5) * ROW_D, y = topY(r);
+      const d = seatFront + (r + 0.5) * ROW_D, y = topY(r);
       const Q = ks.map((k, j) => [track.pts[k].x + out[j].x * d, track.pts[k].z + out[j].z * d]);
       const cum = [0];
       for (let j = 1; j < Q.length; j++) cum.push(cum[j - 1] + Math.hypot(Q[j][0] - Q[j - 1][0], Q[j][1] - Q[j - 1][1]));
@@ -171,7 +172,7 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
       for (let s2 = 0; s2 < cnt; s2++) seats[first + s2].num = side > 0 ? cnt - s2 : s2 + 1;
       rowSpans.push([first, seats.length]);
       // 供拾取用的这一排座席面（按路段切成小四边形）
-      const d0 = FRONT + start + r * ROW_D, d1 = d0 + ROW_D, quads = [];
+      const d0 = seatFront + r * ROW_D, d1 = d0 + ROW_D, quads = [];
       for (let j = 0; j + 1 < ks.length; j++) {
         const P0 = track.pts[ks[j]], P1 = track.pts[ks[j + 1]];
         quads.push([
@@ -194,7 +195,7 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
     for (let j = 0; j + 1 < ks.length; j += segLen) {
       const j1 = Math.min(ks.length - 1, j + segLen), jm = Math.floor((j + j1) / 2), a = track.pts[ks[j]], b = track.pts[ks[j1]], mid = track.pts[ks[jm]];
       const outd = out[jm], len = a.distanceTo(b) + 1, tan = new THREE.Vector3().subVectors(b, a).setY(0).normalize();
-      const frontMid = mid.clone().addScaledVector(outd, FRONT + start);
+      const frontMid = mid.clone().addScaledVector(outd, seatFront);
       const xAxis = side > 0 ? tan.clone().negate() : tan.clone();
       const m = new THREE.Matrix4().makeBasis(xAxis, new THREE.Vector3(0, 1, 0), outd).setPosition(frontMid.x, 0, frontMid.z);
       boxes.push(new THREE.BoxGeometry(len, base + H + 3, D + 2).translate(0, (base + H + 3) / 2, D / 2).applyMatrix4(m));
@@ -204,7 +205,7 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
     hit.userData.standId = spec.id; scene.add(hit); hitboxes.push(hit);
 
     const P = track.pts[i], outward = out[Math.floor(ks.length / 2)];
-    const center = P.clone().addScaledVector(outward, FRONT + start + D / 2).setY((base + H) / 2);
+    const center = P.clone().addScaledVector(outward, seatFront + D / 2).setY((base + H) / 2);
     const f = outward.clone().negate();                      // 由看台指向赛道
     const tmp = new THREE.Vector3();
     const s = {
@@ -226,7 +227,7 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
         return best;
       },
     };
-    stands.push(s); byId[spec.id] = { i, side, D, H: base + H };
+    stands.push(s); byId[spec.id] = { i, side, D, H: base + H, frontOffset };
   }
   return { stands, hitboxes };
 }
