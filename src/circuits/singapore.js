@@ -9,12 +9,12 @@
 import * as THREE from 'three';
 import { t } from '../i18n.js';
 import { TRACK_POINTS, TRUE_NORTH, TURNS, PIT, VENUE, CENTER, FLYER, PITB, MERLION, LANDMARKS, GROVE, OSM_BUILDINGS, OSM_AREAS, OSM_LINES } from './sg/data.js';
-import { buildFlyer, buildPitLane, buildMerlion, buildStartGrid, buildSkyParkDetail, buildSupertrees } from './sg/landmarks.js';
+import { buildFlyer, buildMerlion, buildStartGrid, buildSkyParkDetail, buildSupertrees } from './sg/landmarks.js';
+import { buildSGPitLane, SG_GARAGE_SLOTS } from './sg/pitlane.js';
 import { buildPitBuilding } from '../pitbuilding.js';
 import { seatColor, seatMatrix, seatWorld, seatFacing, SELECTED_COLOR } from '../seatkit.js';
 import { buildSGStands } from './sg/stands.js';
 import { SG_STANDS, SG_STANDS_NOTE } from './sg/stands-data.js';
-import { TEAMS } from '../teams.js';
 import projection from './sg/projection.json';
 import { buildTrack } from '../track.js';
 import { buildEnvironment } from '../environment.js';
@@ -41,7 +41,10 @@ function pitFrame({ p }) {
   const faceX = (best.a[0] + best.b[0]) / 2;
   let n0 = Infinity, n1 = -Infinity;
   for (let i = 0; i < p.length; i += 2) if (Math.abs(p[i] - faceX) < 2) { n0 = Math.min(n0, p[i + 1]); n1 = Math.max(n1, p[i + 1]); }
-  return { front: [faceX, (n0 + n1) / 2], f: [1, 0], L: n1 - n0, D: faceX - xMin };
+  const midN = (n0 + n1) / 2;
+  const slope = (best.b[0] - best.a[0]) / (best.b[1] - best.a[1]);
+  const x = best.a[0] + slope * (midN - best.a[1]);
+  return { front: [x, midN], f: [1, -slope], L: (n1 - n0) * Math.hypot(1, slope), D: x - xMin };
 }
 
 export default {
@@ -76,14 +79,15 @@ export default {
     await step(0.3, tr('铺设赛道', 'Laying the track'));
     // 赛道半宽取 6.5 m（路宽约 13 m，示意；街道赛护墙紧贴路面）
     const track = buildTrack(scene, { points: TRACK_POINTS, pit: PIT, hw: 6.5, runoff: false, ads: ADS, kerbCurv: 0.006, pitSide: 'left' });
-    buildPitLane(scene, PIT);
     buildStartGrid(scene, track, TURNS); // 起终点线与发车格：位置依据官方 Circuit Park Map，近似
     // F1 Pit Building（P 房）：位置与轮廓取自 OSM；建模与上海维修楼同一套——车库、车队名称牌与标志、赛车、技师、工程师控制台、遥测屏
     const frame = pitFrame(PITB);
     const pitb = buildPitBuilding(scene, brand, {
-      P: frame, trackPoints: TRACK_POINTS, trackLabel: { name: 'MARINA BAY', km: '4.927 km' }, nB: TEAMS.length * 3, podium: false,
+      P: frame, trackPoints: TRACK_POINTS, trackLabel: { name: 'MARINA BAY', km: '4.927 km' },
+      garageSlots: SG_GARAGE_SLOTS, showApron: false, podium: false,
       band: ['FORMULA 1', '新加坡大奖赛', 'SINGAPORE GRAND PRIX', '滨海湾街道赛道', 'MARINA BAY 2026', 'FORMULA 1'], tvLive: 'LIVE · MARINA BAY',
     });
+    buildSGPitLane(scene, PIT, track, pitb);
     await step(0.55, tr('加载周边道路、水系与建筑', 'Loading roads, water and buildings'));
     // 立面：偏深的玻璃幕墙，每格两扇窗，夜里各自亮灯，远看是城市天际线的样子
     buildOSM(scene, { OSM_BUILDINGS, OSM_AREAS, OSM_LINES }, {
@@ -140,7 +144,7 @@ export default {
       t('赛道主要由滨海湾一带的城市道路围合而成，逆时针行驶；1 号弯是起终点直道尽头的 90° 左弯，13 号弯是赛道上最紧的左发卡。', 'The circuit is laid out on city streets around Marina Bay and runs anti-clockwise. Turn 1 is a 90° left at the end of the pit straight; Turn 13 is the tightest left-hand hairpin on the lap.'),
       t('弯号位置按官方的 19 弯左右方向序列与中心线曲率对应；4、6、15 号是官方称为“kink”的小角度弯，位置为近似。', 'Turn numbers are matched to the centreline by the official left/right sequence of the 19 corners and the curvature of the track; Turns 4, 6 and 15 are the shallow “kinks” and their positions are approximate.'),
       t(`看台位置依据官网各看台页面与官方 Circuit Park Map（该图不按比例绘制）；官网没有公布看台的长度、进深、高度和座位数，3D 体量和座位数为示意（座位按常规尺寸排满，可以选座、进入座位视角，但座位数不是官方数字）。标价是官网当前显示的三日票成人价（页面为 2027 年赛事，未找到 2026 年价格）。${SG_STANDS_NOTE}`, 'Stand locations follow the official grandstand pages and the official Circuit Park Map (not drawn to scale). The website gives no length, depth, height or seat count, so the 3D volumes and seat counts are schematic (seats are laid out at standard spacing — you can pick seats and view from them, but the count is not the official capacity). Prices are the 3-day adult prices currently shown on the website (the page is for the 2027 event; no 2026 prices were found). Promenade and Chicane @ Turn 2 have no location description on the website and are not included.'),
-      t('维修楼（F1 Pit Building）的位置与轮廓取自 OSM，建模与上海维修楼同一套：车库、车队名称牌与标志、赛车、技师、工程师控制台与遥测屏。车库数量（11 支车队 × 3 间）与分配、内部陈设为示意，冠军车队靠维修通道入口；OSM 记录高度 15 m，模型沿用上海同款 12 m 的结构。', 'The pit building (F1 Pit Building) takes its position and outline from OSM and is modelled like the Shanghai pit building: garages, team signs and logos, cars, crew, engineer consoles and telemetry screens. The garage count (11 teams × 3 bays), allocation and interiors are illustrative, champions nearest the pit entry; OSM records a height of 15 m while the model reuses the same 12 m structure as Shanghai.'),
+      t('维修楼和维修通道的走向取自 OSM，41 个车库开间的分配以及每队一个比赛换胎位参考 FIA 2026 新加坡站维修通道图。快车道与车库侧工作区用白线分隔，车队指挥台沿维修墙布置。车库开间尺寸、通道宽度、指挥台位置和内部陈设为示意。', 'The pit building and pit lane alignment use OSM data. The FIA 2026 Singapore pit lane diagram guides the allocation of 41 garage bays and one race pit-stop position per team. A white line divides the fast lane from the garage-side working lane, with team consoles along the pit wall. Bay dimensions, lane widths, console positions and interiors are illustrative.'),
     ],
     disclaimer: () => t(
       '本网站为个人非官方作品，与 Formula 1、FIA、新加坡大奖赛组织方及各车队均无隶属、赞助或合作关系。赛道、道路与建筑根据公开测绘数据与资料还原，可能与实际存在差异，部分细节为示意（如路宽、灯光、看台与车库的外形尺寸）。票价为官网当前显示的标价，仅供参考，本站不提供任何售票服务，观赛与购票请以官方渠道发布为准。',

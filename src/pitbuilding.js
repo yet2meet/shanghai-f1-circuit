@@ -115,6 +115,8 @@ function teamWall(team, brand) {
  *   P            维修楼立面框架 { front: [x, n] 面向赛道一侧的立面中点, f: [x, n] 由楼指向赛道的单位向量, L: 立面长, D: 进深 }
  *   trackPoints  赛道中心线（遥测屏上的赛道图）
  *   nB           车库开间数（默认 36 = 11 队 × 3 间 + 备用）
+ *   garageSlots  按入口到出口排列的车库（车队对象每组连续三间，字符串为独立标牌）
+ *   showApron    是否生成通用的室外停车位和灯架（默认是）
  *   band         车库层上方广告带上的文字
  *   trackLabel   遥测屏赛道图的标题 { name, km }
  *   tvLive       二层大屏上的 LIVE 文字
@@ -204,7 +206,8 @@ export function buildPitBuilding(scene, brand = null, cfg) {
   const strut = batch(new THREE.CylinderGeometry(0.09, 0.09, 1, 8), steel, G);
 
   // ── 车库开间 ──
-  const nB = cfg.nB ?? 36;             // 上海赛车场比赛工作楼共 36 个车库（施工报道）
+  const garageSlots = cfg.garageSlots;
+  const nB = garageSlots?.length ?? cfg.nB ?? 36;
   const bayW = (L - 8) / nB;
   const x0 = -(nB * bayW) / 2;
   // 维修通道入口在 n 较小的一端（16 号弯）：第 0 个开间放在离入口最近的一端
@@ -286,14 +289,34 @@ export function buildPitBuilding(scene, brand = null, cfg) {
     mull.add(x, 9.05, 0.45, 1, 4.4, 1);
   }
   const dir = plusIsEntry ? -1 : 1;
+  const slotSigns = new Map();
   for (let k = 0; k < nB; k++) {
-    const team = TEAMS[Math.floor(k / 3)];
-    if (!team) { if (k === TEAMS.length * 3) partition.add(bayX(k) - dir * bayW / 2, 2.8, GD / 2, 1, 1, 1); doors.add(bayX(k), 2.6, 0.35, bayW - 0.7, 1, 1); for (const lz of [3, 7, 11]) lights.add(bayX(k), 5.55, lz); continue; } // 备用车库：关闭
-    const [c0, c1, c2] = team.livery || [team.color, '#1b1b1f', team.color];
-    const color = team.color;
+    const slot = garageSlots ? garageSlots[k] : TEAMS[Math.floor(k / 3)];
     const cx = bayX(k);
     const w = bayW - 0.7;
-    if (k % 3 === 0) {
+    if (!slot || typeof slot === 'string') {
+      if (garageSlots ? typeof garageSlots[k - 1] === 'object' : k === TEAMS.length * 3) {
+        partition.add(cx - dir * bayW / 2, 2.8, GD / 2, 1, 1, 1);
+      }
+      doors.add(cx, 2.6, 0.35, w, 1, 1);
+      for (const lz of [3, 7, 11]) lights.add(cx, 5.55, lz);
+      if (slot) {
+        if (!slotSigns.has(slot)) {
+          const map = teamSign({ name: slot, color: '#39434c', text: '#ffffff' });
+          slotSigns.set(slot, floodlit(new THREE.MeshStandardMaterial({ map, roughness: 0.45 }), 0.6));
+        }
+        const sign = new THREE.Mesh(new THREE.PlaneGeometry(w, 0.8), slotSigns.get(slot));
+        sign.rotation.y = Math.PI;
+        sign.position.set(cx, 5.25, -0.13);
+        G.add(sign);
+      }
+      continue;
+    }
+    const team = slot;
+    const teamBay = garageSlots ? k - garageSlots.indexOf(team) : k % 3;
+    const [c0, c1, c2] = team.livery || [team.color, '#1b1b1f', team.color];
+    const color = team.color;
+    if (teamBay === 0) {
       partition.add(cx - dir * bayW / 2, 2.8, GD / 2, 1, 1, 1);
       // 整队门头名称牌（横跨 3 个开间）
       const sign = new THREE.Mesh(new THREE.BoxGeometry(bayW * 3 - 0.7, 1.15, 0.14), [
@@ -334,7 +357,7 @@ export function buildPitBuilding(scene, brand = null, cfg) {
       }
       shade(rx, 5.5, 1.3, 5.8);
     }
-    if (k % 3 !== 1) {
+    if (teamBay !== 1) {
       // 赛车：车头朝维修通道（局部 -z）
       for (const [key, bb] of Object.entries(carB)) {
         const col = key === 'paint' ? c0 : key === 'secondary' ? c1 : key === 'accent' ? c2 : key === 'stripe' ? color : null;
@@ -395,35 +418,38 @@ export function buildPitBuilding(scene, brand = null, cfg) {
   inst.forEach((c) => G.remove(c));
 
   // ── 维修通道前：停车位标线、头顶灯架、轮胎堆 ──
-  const lineMat = std('#f4f4f4', { roughness: 0.6 }, 0.9);
-  lineMat.depthWrite = false;
-  const marks = batch(box(1, 0.02, 1), lineMat, G);
-  const marksTeam = batch(box(1, 0.02, 1), (() => { const m = floodlit(new THREE.MeshStandardMaterial({ roughness: 0.5 }), 0.8); m.depthWrite = false; return m; })(), G);
-  const gPost = batch(box(0.18, 4.4, 0.18), darkMetal, G);
-  const gBeam = batch(box(1, 0.35, 0.35), darkMetal, G);
-  const gLight = batch(box(1, 0.12, 0.25), panel, G);
-  const stackT = batch(blanketGeo(), blanketMat, G);
-  for (let t = 0; t < TEAMS.length && t * 3 + 2 < nB; t++) {
-    const color = TEAMS[t].color;
-    for (const cx of [bayX(t * 3), bayX(t * 3 + 2)]) {
-    // 停车位：白色外框 5 m × 7 m，中间队色引导线
-    const bz = -5.5;
-    marks.add(cx, 0.19, bz - 3.5, 5.2, 1, 0.18); marks.add(cx, 0.19, bz + 3.5, 5.2, 1, 0.18);
-    marks.add(cx - 2.6, 0.19, bz, 0.18, 1, 7.18); marks.add(cx + 2.6, 0.19, bz, 0.18, 1, 7.18);
-    marksTeam.add(cx, 0.2, bz, 0.35, 1, 6.6, 0, color);
-    marksTeam.add(cx, 0.2, bz - 1.9, 1.6, 1, 0.35, 0, color);
-    // 头顶灯架
-    for (const sx of [-3.4, 3.4]) gPost.add(cx + sx, 2.2, bz - 3.8);
-    gBeam.add(cx, 4.35, bz - 3.8, 7.2, 1, 1);
-    gBeam.add(cx, 4.35, bz, 0.35, 1, 7.6);
-    gLight.add(cx, 4.1, bz - 1.2, 3.2, 1, 1); gLight.add(cx, 4.1, bz + 1.2, 3.2, 1, 1);
-    // 轮胎堆（套着轮胎保温毯）
-    for (const sx of [-4.2, 4.2]) for (let h = 0; h < 4; h++) stackT.add(cx + sx, 0.32 + h * 0.375, -0.9, 1, 1, 1, h * 1.3, h % 2 ? color : '#2a2b30');
+  const pitItems = [];
+  if (cfg.showApron !== false) {
+    const lineMat = std('#f4f4f4', { roughness: 0.6 }, 0.9);
+    lineMat.depthWrite = false;
+    const marks = batch(box(1, 0.02, 1), lineMat, G);
+    const marksTeam = batch(box(1, 0.02, 1), (() => { const m = floodlit(new THREE.MeshStandardMaterial({ roughness: 0.5 }), 0.8); m.depthWrite = false; return m; })(), G);
+    const gPost = batch(box(0.18, 4.4, 0.18), darkMetal, G);
+    const gBeam = batch(box(1, 0.35, 0.35), darkMetal, G);
+    const gLight = batch(box(1, 0.12, 0.25), panel, G);
+    const stackT = batch(blanketGeo(), blanketMat, G);
+    for (let t = 0; t < TEAMS.length && t * 3 + 2 < nB; t++) {
+      const color = TEAMS[t].color;
+      for (const cx of [bayX(t * 3), bayX(t * 3 + 2)]) {
+        // 停车位：白色外框 5 m × 7 m，中间队色引导线
+        const bz = -5.5;
+        marks.add(cx, 0.19, bz - 3.5, 5.2, 1, 0.18); marks.add(cx, 0.19, bz + 3.5, 5.2, 1, 0.18);
+        marks.add(cx - 2.6, 0.19, bz, 0.18, 1, 7.18); marks.add(cx + 2.6, 0.19, bz, 0.18, 1, 7.18);
+        marksTeam.add(cx, 0.2, bz, 0.35, 1, 6.6, 0, color);
+        marksTeam.add(cx, 0.2, bz - 1.9, 1.6, 1, 0.35, 0, color);
+        // 头顶灯架
+        for (const sx of [-3.4, 3.4]) gPost.add(cx + sx, 2.2, bz - 3.8);
+        gBeam.add(cx, 4.35, bz - 3.8, 7.2, 1, 1);
+        gBeam.add(cx, 4.35, bz, 0.35, 1, 7.6);
+        gLight.add(cx, 4.1, bz - 1.2, 3.2, 1, 1); gLight.add(cx, 4.1, bz + 1.2, 3.2, 1, 1);
+        // 轮胎堆（套着轮胎保温毯）
+        for (const sx of [-4.2, 4.2]) for (let h = 0; h < 4; h++) stackT.add(cx + sx, 0.32 + h * 0.375, -0.9, 1, 1, 1, h * 1.3, h % 2 ? color : '#2a2b30');
+      }
     }
+    pitItems.push(...[marks, marksTeam, gPost, gBeam, gLight, stackT].map((b) => b.build()));
+    pitItems[0].renderOrder = pitItems[1].renderOrder = -0.95;
+    pitItems[0].castShadow = pitItems[1].castShadow = false;
   }
-  const pitItems = [marks, marksTeam, gPost, gBeam, gLight, stackT].map((b) => b.build());
-  pitItems[0].renderOrder = pitItems[1].renderOrder = -0.95;
-  pitItems[0].castShadow = pitItems[1].castShadow = false;
 
   // ── 领奖台：二层立面外侧的悬挑平台 ──
   const podium = new THREE.Group();
@@ -440,5 +466,5 @@ export function buildPitBuilding(scene, brand = null, cfg) {
   inst.forEach((c) => scene.add(c));
   pitItems.forEach((c) => scene.add(c));
   const axis = new THREE.Line3(endMinus.clone().setY(2), endPlus.clone().setY(2));
-  return { group: G, glass, detail, axis, front: V(P.front[0], P.front[1]), f, L, bayX, nB, toWorld: (x, z) => new THREE.Vector3(x, 0, z).applyMatrix4(G.matrixWorld) };
+  return { group: G, glass, detail, axis, front: V(P.front[0], P.front[1]), f, L, bayX, nB, telemetryTexture: teleTex, toWorld: (x, z) => new THREE.Vector3(x, 0, z).applyMatrix4(G.matrixWorld) };
 }

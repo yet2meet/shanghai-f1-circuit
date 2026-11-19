@@ -1,7 +1,7 @@
-// 滨海湾的地标与赛道配套：新加坡摩天轮、维修通道。
+// 滨海湾的地标与赛道配套。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { V, std, floodlit, lampMat, makePath, ribbon, rng } from '../../util.js';
+import { V, std, floodlit, lampMat, rng } from '../../util.js';
 import { merlionStatue } from './merlion.js';
 import { asGround } from '../../osm.js';
 
@@ -63,18 +63,6 @@ export function buildFlyer(scene, { c, ax }) {
   g.add(new THREE.LineSegments(stayGeometry, new THREE.LineBasicMaterial({ color: '#aab2be', transparent: true, opacity: 0.45 })));
   scene.add(g);
   return g;
-}
-
-/** 维修通道：OSM 中 raceway=pitlane 的真实走向。路面宽度 OSM 没有标注，取 12 m（示意） */
-export function buildPitLane(scene, pit) {
-  const pts = pit.map(([x, n]) => V(x, n));
-  const path = makePath(pts, false);
-  const mat = floodlit(new THREE.MeshStandardMaterial({ color: '#3b3d42', roughness: 0.92 }), 0.55);
-  const lineMat = floodlit(new THREE.MeshStandardMaterial({ color: '#f4f4f4', roughness: 0.6 }), 0.8);
-  const road = asGround(new THREE.Mesh(ribbon(path, { offA: 6, offB: -6, y: 0.12, uv: 16 }), mat), -2.0);
-  const l1 = asGround(new THREE.Mesh(ribbon(path, { offA: 5.8, offB: 5.45, y: 0.14 }), lineMat), -1.9);
-  const l2 = asGround(new THREE.Mesh(ribbon(path, { offA: -5.45, offB: -5.8, y: 0.14 }), lineMat), -1.9);
-  scene.add(road, l1, l2);
 }
 
 /**
