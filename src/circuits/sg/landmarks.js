@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { V, std, floodlit, lampMat, rng } from '../../util.js';
-import { merlionStatue } from './merlion.js';
+import { merlionStatue, merlionWater } from './merlion.js';
 import { asGround } from '../../osm.js';
 
 // 新加坡摩天轮（Singapore Flyer）：轮径 150 m、总高 165 m、28 个空调轿厢——
@@ -66,8 +66,8 @@ export function buildFlyer(scene, { c, ax }) {
 }
 
 /**
- * 鱼尾狮（Merlion）雕像：位置取自 OSM（Merlion Fountain 轮廓中心；幼狮取自 OSM 同名点）。主像高 8.6 m、白色，
- * 口中喷出水柱落向滨海湾，面朝对岸的金沙——高度出自新加坡旅游局 / Wikipedia 的公开介绍；狮头与鱼身的具体造型为示意。
+ * 鱼尾狮（Merlion）主像：位置取自 OSM Merlion Fountain，高度 8.6 m 取自新加坡旅游局。
+ * 水柱从狮口喷向滨海湾，雕塑细节按实拍照片近似建模。
  * @param at  { c: [x, n] 主像位置, toward: [x, n] 面向的点 }
  */
 export function buildMerlion(scene, { c, toward }) {
@@ -76,10 +76,7 @@ export function buildMerlion(scene, { c, toward }) {
   const main = merlionStatue(1);
   main.position.set(c[0], 0, -c[1]);
   main.rotation.y = Math.atan2(toward[0] - c[0], -(toward[1] - c[1]));
-  const [mx, my, mz] = main.userData.mouth; // 喷水口：水柱近乎水平地喷出去，落向海湾
-  const pts = [];
-  for (let k = 0; k <= 18; k++) { const u = k / 18; pts.push(new THREE.Vector3(mx, my + 0.9 * u - u * u * (my + 0.7), mz + u * 14)); }
-  main.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 28, 0.22, 8), new THREE.MeshStandardMaterial({ color: '#d6ecff', transparent: true, opacity: 0.6, roughness: 0.2, emissive: '#7fb6e8', emissiveIntensity: 0.3 })));
+  main.add(merlionWater(main.userData.mouth));
   root.add(main);
   scene.add(root);
   return root;
