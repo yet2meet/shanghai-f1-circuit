@@ -2,7 +2,7 @@
 // 位置：每个看台“在哪个弯道 / 哪两个弯道之间、行驶方向的哪一侧”取自官网各看台页面与官方 Circuit Park Map
 // （singaporegp.sg/event-info/circuit-park-map，图上各看台红色标记所在的路段与一侧；该图“不按比例绘制”）。
 // 官方没有公布的看台长度、进深、高度、座位数：按常见临时看台量级给出示意体量（阶梯状座席块），界面上注明“示意”；
-// 座位按常规看台尺寸（座距 0.55 m、排距 0.85 m，每 28 座一条过道）排满这块体量，座位数不是官方数字。
+// 座位按常规看台尺寸（座距 0.55 m、排距 0.85 m）排布，径向过道和出入口为示意。
 // 造型：沿赛道曲线整体扫掠——每一排座席是一条与赛道平行的弧，后墙、端面连续，弯道处的看台是圆滑的弧形而不是拼接的直条。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -11,7 +11,10 @@ import { ROW_D, PITCH, seatGeometry, seatMatrix, seatColor } from '../../seatkit
 import { SG_STANDS } from './stands-data.js';
 
 const FRONT = 11;   // 看台前沿离赛道中心线的距离：路面半宽 6.5 + 护墙与防护网约 2 + 通道
-const BLOCK = 28, AISLE = 2; // 每个分区 28 座 + 2 个座位宽的过道（与上海一致）
+const BLOCK = 28;
+const AISLE_W = 2 * PITCH;
+const ENTRY_W = 2.8;
+const ENTRY_ROWS = 3;
 const UNDER_H = 4.6;         // 高架桥下的看台限高（桥面下沿约 5.5 m）
 
 const inPoly = (x, n, p) => {
@@ -30,6 +33,178 @@ const segD = (x, n, p) => { // 点到折线（扁平 [x,n,…]）的最短距离
   }
   return best;
 };
+
+function arcLength(at, last, depth) {
+  const dist = [0];
+  let prev = at(0, depth, 0);
+  for (let j = 1; j <= last; j++) {
+    const point = at(j, depth, 0);
+    dist.push(dist[j - 1] + point.distanceTo(prev));
+    prev = point;
+  }
+  return {
+    total: dist[last],
+    uAt(distance) {
+      let lo = 0, hi = last;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (dist[mid] <= distance) lo = mid; else hi = mid;
+      }
+      return lo + (distance - dist[lo]) / Math.max(1e-6, dist[hi] - dist[lo]);
+    },
+    distanceAt(u) {
+      const j = Math.min(Math.floor(u), last - 1);
+      return THREE.MathUtils.lerp(dist[j], dist[j + 1], u - j);
+    },
+  };
+}
+
+function aisleLayout(arc) {
+  const blocks = Math.max(2, Math.round((arc.total + AISLE_W) / (BLOCK * PITCH + AISLE_W)));
+  const blockWidth = (arc.total - (blocks - 1) * AISLE_W) / blocks;
+  if (blockWidth < PITCH) return [];
+  const entryHalfWidth = Math.min(ENTRY_W / 2, (blockWidth + AISLE_W) / 3);
+  return Array.from({ length: blocks - 1 }, (_, j) => {
+    const center = (j + 1) * (blockWidth + AISLE_W) - AISLE_W / 2;
+    return [-entryHalfWidth, -AISLE_W / 2, AISLE_W / 2, entryHalfWidth].map(d => arc.uAt(center + d));
+  });
+}
+
+function rowSections(aisles, last, entry) {
+  const sections = [];
+  let start = 0;
+  for (const [wideL, left, right, wideR] of aisles) {
+    const a = entry ? wideL : left, b = entry ? wideR : right;
+    sections.push({ a: start, b: a, kind: 'seat' });
+    sections.push({ a, b, kind: entry ? 'entry' : 'aisle' });
+    start = b;
+  }
+  sections.push({ a: start, b: last, kind: 'seat' });
+  return sections;
+}
+
+function makeDeck(at, rows, front, backHeight, lowerLanding, backOpenings) {
+  const pos = [], faces = [[], [], []], rowQuads = [], rails = [];
+  const quad = (a, b, c, d, material) => {
+    const start = pos.length / 3;
+    for (const { x, y, z } of [a, b, c, d]) pos.push(x, y, z);
+    faces[material].push(start, start + 1, start + 2, start, start + 2, start + 3);
+  };
+  const flank = (u, d0, d1, bottom, top, material) => {
+    quad(at(u, d0, bottom), at(u, d1, bottom), at(u, d1, top), at(u, d0, top), material);
+  };
+  const across = (a, b, draw) => {
+    for (let u = a; u < b - 1e-6;) {
+      const v = Math.min(b, Math.floor(u) + 1);
+      draw(u, v);
+      u = v;
+    }
+  };
+  const riser = (a, b, d, low, high, material) => {
+    across(a, b, (u, v) => quad(at(u, d, low), at(u, d, high), at(v, d, high), at(v, d, low), material));
+  };
+  const tread = (a, b, d0, d1, y, material) => {
+    across(a, b, (u, v) => quad(at(u, d0, y), at(u, d1, y), at(v, d1, y), at(v, d0, y), material));
+  };
+  const lastRow = rows.at(-1);
+  const last = lastRow.sections.at(-1).b;
+  const rail = (a, b, depth, base, height, postSpacing) => {
+    if (a >= b) return;
+    for (const y of [base + height * 0.48, base + height]) {
+      across(a, b, (u, v) => rails.push([at(u, depth, y), at(v, depth, y)]));
+    }
+    const arc = arcLength(at, last, depth);
+    const start = arc.distanceAt(a), end = arc.distanceAt(b);
+    const count = Math.max(1, Math.ceil((end - start) / postSpacing));
+    for (let j = 0; j <= count; j++) {
+      const u = j === 0 ? a : j === count ? b : arc.uAt(THREE.MathUtils.lerp(start, end, j / count));
+      rails.push([at(u, depth, base), at(u, depth, base + height)]);
+    }
+  };
+  const entryStart = rows.findIndex(row => row.sections.some(section => section.kind === 'entry'));
+  const entryEnd = entryStart + ENTRY_ROWS - 1;
+  const entryFloor = rows[entryStart - 1]?.y;
+
+  for (const [r, row] of rows.entries()) {
+    const d0 = front + r * ROW_D, d1 = d0 + ROW_D;
+    const prevY = rows[r - 1]?.y ?? lowerLanding;
+    const rowFaces = [];
+    for (const { a, b, kind } of row.sections) {
+      if (b <= a) continue;
+      if (kind === 'entry') {
+        // 左、右、高侧共用同一墙顶标高，低侧朝过道开口。
+        const wallTop = rows[entryEnd].y + 0.96;
+        const thickness = (b - a) * 0.07;
+        const left = a + thickness, right = b - thickness;
+        const lastEntryRow = r === entryEnd;
+        const rear = lastEntryRow ? d1 - 0.02 : d1;
+        const openingEnd = lastEntryRow ? rear - 0.2 : rear;
+        tread(left, right, d0, openingEnd, entryFloor, 2);
+        for (const [outside, inside] of [[a, left], [b, right]]) {
+          const from = Math.min(outside, inside), to = Math.max(outside, inside);
+          tread(from, to, d0, rear, wallTop, 1);
+          flank(outside, d0, rear, row.y, wallTop, 1);
+          flank(inside, d0, openingEnd, entryFloor, wallTop, 1);
+          if (r === entryStart) riser(from, to, d0, entryFloor, wallTop, 1);
+        }
+        if (lastEntryRow) {
+          riser(left, right, openingEnd, entryFloor, row.y - 0.16, 2);
+          riser(left, right, openingEnd, row.y - 0.16, wallTop, 1);
+          tread(left, right, openingEnd, rear, wallTop, 1);
+          riser(a, b, rear, row.y, wallTop, 1);
+        }
+        continue;
+      }
+      const material = kind === 'seat' ? 0 : 1;
+      const steps = kind === 'aisle' ? 3 : 1;
+      for (let step = 0; step < steps; step++) {
+        const f0 = step / steps, f1 = (step + 1) / steps;
+        const start = THREE.MathUtils.lerp(d0, d1, f0), end = THREE.MathUtils.lerp(d0, d1, f1);
+        const y = THREE.MathUtils.lerp(prevY, row.y, f1);
+        const below = THREE.MathUtils.lerp(prevY, row.y, f0);
+        across(a, b, (u, v) => {
+          const q = [at(u, start, y), at(u, end, y), at(v, end, y), at(v, start, y)];
+          quad(...q, material);
+          if (material === 0) rowFaces.push(q);
+          quad(at(u, start, below), q[0], q[3], at(v, start, below), material);
+          if (r === 0 && step === 0 && lowerLanding > 0) quad(at(u, start, 0), at(u, start, lowerLanding), at(v, start, lowerLanding), at(v, start, 0), 0);
+          if (r === rows.length - 1 && step === steps - 1) {
+            const height = backOpenings.has(a) ? row.y : backHeight;
+            quad(at(u, end, 0), at(v, end, 0), at(v, end, height), at(u, end, height), material);
+            if (height > row.y) {
+              tread(u, v, end - 0.09, end, height, material);
+              riser(u, v, end - 0.09, row.y, height, material);
+            }
+          }
+        });
+        if (y < row.y) {
+          flank(a, start, end, y, row.y, 1);
+          flank(b, start, end, y, row.y, 1);
+        }
+      }
+    }
+    flank(0, d0, d1, 0, row.y, 0);
+    flank(row.sections.at(-1).b, d0, d1, 0, row.y, 0);
+    rowQuads.push(rowFaces);
+  }
+
+  const rear = front + rows.length * ROW_D - 0.045;
+  let startOfRail = 0;
+  for (const { a, b } of lastRow.sections) {
+    if (!backOpenings.has(a)) continue;
+    rail(startOfRail, a, rear, backHeight, 0.92, 2.4);
+    startOfRail = b;
+  }
+  rail(startOfRail, last, rear, backHeight, 0.92, 2.4);
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geometry.setIndex(faces.flat());
+  let start = 0;
+  faces.forEach((indices, material) => { geometry.addGroup(start, indices.length, material); start += indices.length; });
+  geometry.computeVertexNormals();
+  return { geometry, rowQuads, rails };
+}
 
 /**
  * @param track  buildTrack 的返回值
@@ -71,40 +246,13 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
     return [bad, under, total];
   };
 
-  /** 沿赛道扫掠出阶梯状座席：每排一条与赛道平行的弧；顶面、前立面、后墙、两端面 */
-  function sweep(ks, side, frontOffset, rows, rise, base, hBack) {
-    const pos = [], nor = [], idx = [];
-    const out = ks.map((k) => new THREE.Vector3(track.nor[k].x * side, 0, track.nor[k].z * side));
-    const at = (j, d, y) => { const P = track.pts[ks[j]]; return [P.x + out[j].x * d, y, P.z + out[j].z * d]; };
-    const quad = (a, b, c, d, n) => {
-      const o = pos.length / 3;
-      for (const p of [a, b, c, d]) { pos.push(...p); nor.push(...n); }
-      idx.push(o, o + 1, o + 2, o, o + 2, o + 3);
-    };
-    const last = ks.length - 1;
-    for (let r = 0; r < rows; r++) {
-      const d0 = frontOffset + r * ROW_D, d1 = d0 + ROW_D;
-      const hTop = base + (r + 1) * rise, hPrev = r ? base + r * rise : 0;
-      for (let j = 0; j < last; j++) {
-        quad(at(j, d0, hTop), at(j, d1, hTop), at(j + 1, d1, hTop), at(j + 1, d0, hTop), [0, 1, 0]);                          // 座席面
-        quad(at(j, d0, hPrev), at(j, d0, hTop), at(j + 1, d0, hTop), at(j + 1, d0, hPrev), [-out[j].x, 0, -out[j].z]);          // 前立面（朝赛道）
-      }
-      for (const [j, sgn] of [[0, -1], [last, 1]]) {                                                                          // 两端面
-        const tn = track.tan[ks[j]];
-        quad(at(j, d0, 0), at(j, d1, 0), at(j, d1, hTop), at(j, d0, hTop), [tn.x * sgn, 0, tn.z * sgn]);
-      }
-    }
-    const dB = frontOffset + rows * ROW_D;
-    for (let j = 0; j < last; j++) quad(at(j, dB, 0), at(j + 1, dB, 0), at(j + 1, dB, hBack), at(j, dB, hBack), [out[j].x, 0, out[j].z]); // 后墙
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-    g.setIndex(idx);
-    return g;
-  }
-
   const seatGeo = seatGeometry();
   const seatMat = floodlit(new THREE.MeshStandardMaterial({ roughness: 0.55 }), 0.58);
+  const stairMat = std('#bac0c8', { roughness: 0.85, side: THREE.DoubleSide }, 0.34);
+  const entryMat = std('#22262d', { roughness: 0.92, side: THREE.DoubleSide }, 0.18);
+  const railGeo = new THREE.BoxGeometry(1, 1, 1);
+  const railMat = std('#c6ccd3', { roughness: 0.55, metalness: 0.35 }, 0.36);
+  const railUp = new THREE.Vector3(0, 1, 0);
   const stands = [], hitboxes = [], byId = {}, bodyMat = new Map();
   const matFor = (color) => { if (!bodyMat.has(color)) bodyMat.set(color, std(color, { roughness: 0.7, side: THREE.DoubleSide }, 0.3)); return bodyMat.get(color); };
   const tri = (ray, a, b, c, tmp) => ray.intersectTriangle(a, b, c, false, tmp);
@@ -138,49 +286,75 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
       const P = track.pts[ks[j]], nor = track.nor[ks[j]];
       if (underBridge(P.x + nor.x * side * (frontOffset + D / 2), -(P.z + nor.z * side * (frontOffset + D / 2)))) { H = Math.min(H, UNDER_H); break; }
     }
-    const seatFront = frontOffset + (parent ? parent.D : 0); // 上层座席接在前一块后面
-    const base = parent ? parent.H - 0 : 0.3;
+    const seatFront = frontOffset + (parent?.depth ?? 0); // 上层座席接到下层最后一排
+    const base = parent?.H ?? 0.3;
     const rows = Math.max(3, Math.round(D / ROW_D)), rise = (H - (parent ? 0 : 0.3)) / rows;
     const topY = (r) => base + (r + 1) * rise;
-    const surface = new THREE.Mesh(sweep(ks, side, seatFront, rows, rise, base, base + H + 0.5), matFor(spec.color));
+    const last = ks.length - 1;
+    const out = ks.map(k => new THREE.Vector3(track.nor[k].x * side, 0, track.nor[k].z * side));
+    const at = (u, depth, y) => {
+      const j = Math.min(Math.floor(u), last - 1);
+      const a = track.pts[ks[j]], b = track.pts[ks[j + 1]];
+      return a.clone().addScaledVector(out[j], depth).lerp(b.clone().addScaledVector(out[j + 1], depth), u - j).setY(y);
+    };
+    // 过道由同一条基准弧确定，所有排沿同一法线留空。
+    const refArc = arcLength(at, last, seatFront + rows * ROW_D / 2);
+    const parentShift = parent ? (parent.last - last) / 2 : 0;
+    const inherited = parent?.aisles.map(aisle => aisle.map(u => u - parentShift))
+      .filter(([a, , , b]) => a > 0 && b < last);
+    const aisles = inherited?.length ? inherited : aisleLayout(refArc);
+    const entryStart = rows >= 9 ? Math.floor(rows / 2) : rows;
+    const layout = Array.from({ length: rows }, (_, r) => ({
+      y: topY(r),
+      sections: rowSections(aisles, last, r >= entryStart && r < entryStart + ENTRY_ROWS),
+    }));
+    const upper = SG_STANDS.find(stand => stand.behind === spec.id);
+    const backOpenings = new Set();
+    if (upper) {
+      const edge = (ks.length - ptsOf(i, upper.size[0]).length) / 2;
+      for (const [wideL, left, , wideR] of aisles) if (wideL > edge && wideR < last - edge) backOpenings.add(left);
+    }
+    const { geometry, rowQuads, rails } = makeDeck(at, layout, seatFront, base + H + 0.5, parent?.deckTop ?? 0, backOpenings);
+    const surface = new THREE.Mesh(geometry, [matFor(spec.color), stairMat, entryMat]);
     surface.castShadow = surface.receiveShadow = true;
+    const railing = new THREE.InstancedMesh(railGeo, railMat, rails.length);
+    railing.name = 'grandstand-railings';
+    const railMatrix = new THREE.Matrix4(), railRotation = new THREE.Quaternion();
+    const railLength = new THREE.Vector3(), railCenter = new THREE.Vector3(), railScale = new THREE.Vector3();
+    rails.forEach(([a, b], index) => {
+      railLength.subVectors(b, a);
+      const length = railLength.length();
+      railRotation.setFromUnitVectors(railUp, railLength.multiplyScalar(1 / length));
+      railMatrix.compose(railCenter.copy(a).lerp(b, 0.5), railRotation, railScale.set(0.06, length + 0.04, 0.06));
+      railing.setMatrixAt(index, railMatrix);
+    });
+    surface.add(railing);
     scene.add(surface);
 
-    // ── 座位：每排沿自己的弧线排布，每 28 座一条过道 ──
-    const out = ks.map((k) => new THREE.Vector3(track.nor[k].x * side, 0, track.nor[k].z * side));
-    const seats = [], baseA = [], rotA = [], rowSpans = [], rowQuads = [];
+    // 各座席区内按该排弧长排座，过道和出入口与座席面使用同一份分段。
+    const seats = [], baseA = [], rotA = [], rowSpans = [];
     const segLen = Math.max(4, Math.round(25 / mPerPt)), nSeg = Math.ceil((ks.length - 1) / segLen);
     for (let r = 0; r < rows; r++) {
-      const d = seatFront + (r + 0.5) * ROW_D, y = topY(r);
-      const Q = ks.map((k, j) => [track.pts[k].x + out[j].x * d, track.pts[k].z + out[j].z * d]);
-      const cum = [0];
-      for (let j = 1; j < Q.length; j++) cum.push(cum[j - 1] + Math.hypot(Q[j][0] - Q[j - 1][0], Q[j][1] - Q[j - 1][1]));
-      const total = cum[cum.length - 1];
+      const d = seatFront + (r + 0.5) * ROW_D;
+      const arc = arcLength(at, last, d);
       const first = seats.length;
-      let u = PITCH / 2, cnt = 0, jj = 0;
-      while (u < total - PITCH / 2) {
-        while (jj < cum.length - 2 && cum[jj + 1] < u) jj++;
-        const t = (u - cum[jj]) / Math.max(1e-6, cum[jj + 1] - cum[jj]);
-        const x = Q[jj][0] + (Q[jj + 1][0] - Q[jj][0]) * t, z = Q[jj][1] + (Q[jj + 1][1] - Q[jj][1]) * t;
-        const o = new THREE.Vector3().lerpVectors(out[jj], out[jj + 1], t).normalize();
-        baseA.push(x, y, z); rotA.push(Math.atan2(o.x, o.z));
-        seats.push({ zone: 'g', row: r + 1, num: 0, part: Math.min(nSeg - 1, Math.floor(jj / segLen)), j: Math.random() });
-        cnt++; u += PITCH;
-        if (cnt % BLOCK === 0) u += PITCH * AISLE;
+      for (const { a, b, kind } of layout[r].sections) {
+        if (kind !== 'seat') continue;
+        const start = arc.distanceAt(a), end = arc.distanceAt(b);
+        const count = Math.floor((end - start) / PITCH);
+        const firstSeat = (start + end - (count - 1) * PITCH) / 2;
+        for (let seat = 0; seat < count; seat++) {
+          const u = arc.uAt(firstSeat + seat * PITCH), j = Math.floor(u);
+          const p = at(u, d, layout[r].y);
+          const o = out[j].clone().lerp(out[j + 1], u - j);
+          baseA.push(p.x, p.y, p.z); rotA.push(Math.atan2(o.x, o.z));
+          seats.push({ zone: 'g', row: r + 1, num: 0, part: Math.min(nSeg - 1, Math.floor(j / segLen)), j: Math.random() });
+        }
       }
       // 座号：面朝赛道从左往右数（左侧看台：顺行驶方向的反方向数；右侧看台：顺行驶方向数）
+      const cnt = seats.length - first;
       for (let s2 = 0; s2 < cnt; s2++) seats[first + s2].num = side > 0 ? cnt - s2 : s2 + 1;
       rowSpans.push([first, seats.length]);
-      // 供拾取用的这一排座席面（按路段切成小四边形）
-      const d0 = seatFront + r * ROW_D, d1 = d0 + ROW_D, quads = [];
-      for (let j = 0; j + 1 < ks.length; j++) {
-        const P0 = track.pts[ks[j]], P1 = track.pts[ks[j + 1]];
-        quads.push([
-          new THREE.Vector3(P0.x + out[j].x * d0, y, P0.z + out[j].z * d0), new THREE.Vector3(P0.x + out[j].x * d1, y, P0.z + out[j].z * d1),
-          new THREE.Vector3(P1.x + out[j + 1].x * d1, y, P1.z + out[j + 1].z * d1), new THREE.Vector3(P1.x + out[j + 1].x * d0, y, P1.z + out[j + 1].z * d0),
-        ]);
-      }
-      rowQuads.push(quads);
     }
     const mesh = new THREE.InstancedMesh(seatGeo, seatMat, seats.length);
     mesh.frustumCulled = false;
@@ -227,7 +401,7 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
         return best;
       },
     };
-    stands.push(s); byId[spec.id] = { i, side, D, H: base + H, frontOffset };
+    stands.push(s); byId[spec.id] = { i, side, H: base + H, frontOffset, depth: rows * ROW_D, deckTop: topY(rows - 1), last, aisles };
   }
   return { stands, hitboxes };
 }

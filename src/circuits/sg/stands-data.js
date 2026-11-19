@@ -14,8 +14,8 @@
 // 价格：官网列表页当前显示的“三日票成人票”标价（新币，含 9% GST）。页面标题为“2027 Tickets”，
 //   没有 2026 年赛事的价格，所以界面上注明“官网当前标价（页面为 2027 年赛事）”，不当作 2026 年票价。
 //   官网上显示的“售罄 / 有限”状态随时变化，不收录。
-const NOTE = '位置依据官网页面的文字描述；看台的长度、进深、高度与座位数官网没有公布，3D 体量和座位数为示意（座位按常规尺寸排满，不是官方座位数）。';
-const NOTE_EN = 'The location follows the wording on the official page; the website gives no length, depth, height or seat count, so the 3D volume and seat count are schematic (seats are laid out at standard spacing, not the official capacity).';
+const NOTE = '看台位置依据官网说明；模型尺寸、座席、楼梯和看台内部出入口均为示意，官方通行门号见上方。';
+const NOTE_EN = 'Grandstand locations follow the official descriptions. Model dimensions, seating, stairs and internal entrances are schematic. See above for official access gates.';
 
 /** 按价位分色（只用于区分，不是官方配色） */
 const colorOf = (price) => (price >= 2000 ? '#d7262c' : price >= 1600 ? '#e9579a' : price >= 1200 ? '#f59e0b' : '#2e9e5b');
