@@ -18,7 +18,8 @@ export function buildFlyer(scene, { c, ax }) {
   const steel = std('#e9ecf0', { roughness: 0.4, metalness: 0.5 }, 0.3);
   const rims = [];
   for (const z of [-2.2, 2.2]) rims.push(new THREE.TorusGeometry(R - 1.5, 0.9, 6, 120).translate(0, HUB, z));
-  const ring = new THREE.Mesh(mergeGeometries(rims), steel);
+  const ringSteel = lampMat('#e9ecf0', '#bedbfa', 0.40, { roughness: 0.4, metalness: 0.5 });
+  const ring = new THREE.Mesh(mergeGeometries(rims), ringSteel);
   ring.castShadow = true;
   g.add(ring);
   // 辐条：从轮毂到轮缘的拉索

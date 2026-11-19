@@ -6,6 +6,7 @@ import { screenGeo } from '../../pitscreens.js';
 import { TEAMS } from '../../teams.js';
 import { groundDetail } from '../../textures.js';
 import { V, makePath, ribbon, rng, std, wall } from '../../util.js';
+import { addRoadFill } from './night-lighting.js';
 
 // FIA 2026 Singapore GP Pit Lane V2, p. 2：编号与分配按入口到出口排列。
 const pitTeams = [
@@ -112,11 +113,14 @@ export function buildSGPitLane(scene, pit, track, pitb) {
 
   const asphalt = groundDetail(std('#3b3d42', { roughness: 0.92 }, 0.55), 'asphalt', { size: 3, k: 0.7, mk: 0.12 });
   const fastSurface = groundDetail(std('#282c32', { roughness: 0.93 }, 0.55), 'asphalt', { size: 3, k: 0.7, mk: 0.12 });
+  const uvMetres = 10;
+  addRoadFill(asphalt, path.total, uvMetres, 0.63);
+  addRoadFill(fastSurface, path.total, uvMetres, 0.98);
   const paint = std('#f4f4f4', { roughness: 0.6 }, 0.8);
   const concrete = std('#92999f', { side: THREE.DoubleSide, roughness: 0.8 }, 0.4);
   const platform = std('#697179', { roughness: 0.85 }, 0.4);
   const band = (offA, offB, y, mat, range = {}, groundOrder = null) => {
-    const mesh = new THREE.Mesh(ribbon(path, { offA, offB, y, ...range }), mat);
+    const mesh = new THREE.Mesh(ribbon(path, { offA, offB, y, uv: uvMetres, ...range }), mat);
     if (groundOrder !== null) asGround(mesh, groundOrder);
     else mesh.receiveShadow = true;
     group.add(mesh);

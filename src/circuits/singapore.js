@@ -11,7 +11,9 @@ import { t } from '../i18n.js';
 import { TRACK_POINTS, TRUE_NORTH, TURNS, PIT, VENUE, CENTER, FLYER, PITB, MERLION, LANDMARKS, GROVE, OSM_BUILDINGS, OSM_AREAS, OSM_LINES } from './sg/data.js';
 import { buildFlyer, buildMerlion, buildStartGrid, buildSkyParkDetail, buildSupertrees } from './sg/landmarks.js';
 import { buildEsplanadeRoof, esplanadeFacade } from './sg/esplanade.js';
+import { buildEsplanadeBridge, esplanadeBridgeTreeClearance } from './sg/esplanade-bridge.js';
 import { buildSGPitLane, SG_GARAGE_SLOTS } from './sg/pitlane.js';
+import { addBayGlints, addRoadFill } from './sg/night-lighting.js';
 import { buildPitBuilding } from '../pitbuilding.js';
 import { seatColor, seatMatrix, seatWorld, seatFacing, SELECTED_COLOR } from '../seatkit.js';
 import { buildSGStands } from './sg/stands.js';
@@ -79,7 +81,10 @@ export default {
   async build(scene, { renderer, step, tr, brand }) {
     await step(0.3, tr('铺设赛道', 'Laying the track'));
     // 赛道半宽取 6.5 m（路宽约 13 m，示意；街道赛护墙紧贴路面）
-    const track = buildTrack(scene, { points: TRACK_POINTS, pit: PIT, hw: 6.5, runoff: false, ads: ADS, kerbCurv: 0.006, pitSide: 'left' });
+    const track = buildTrack(scene, {
+      points: TRACK_POINTS, pit: PIT, hw: 6.5, runoff: false, ads: ADS, kerbCurv: 0.006, pitSide: 'left',
+      finishAsphalt: (material, path, uvMetres) => addRoadFill(material, path.total, uvMetres, 1.60),
+    });
     buildStartGrid(scene, track, TURNS); // 起终点线与发车格：位置依据官方 Circuit Park Map，近似
     // F1 Pit Building（P 房）：位置与轮廓取自 OSM；建模与上海维修楼同一套——车库、车队名称牌与标志、赛车、技师、工程师控制台、遥测屏
     const frame = pitFrame(PITB);
@@ -91,9 +96,13 @@ export default {
     buildSGPitLane(scene, PIT, track, pitb);
     await step(0.55, tr('加载周边道路、水系与建筑', 'Loading roads, water and buildings'));
     const artsFacade = esplanadeFacade();
-    buildOSM(scene, { OSM_BUILDINGS, OSM_AREAS, OSM_LINES }, {
-      treeKeepOut: [MERLION && { c: MERLION.c, r: 17 }].filter(Boolean), // 鱼尾狮周围不种树，雕像看得清
+    const { deckUndersideAt } = buildOSM(scene, { OSM_BUILDINGS, OSM_AREAS, OSM_LINES }, {
+      treeKeepOut: [...esplanadeBridgeTreeClearance(), MERLION && { c: MERLION.c, r: 17 }].filter(Boolean),
+      roadSupportClear: (x, n) => track.distTo(x, -n, 2) > 35,
       domeRoof: buildEsplanadeRoof,
+      finishWater: LANDMARKS.esplanade && MERLION
+        ? (material) => addBayGlints(material, { esplanade: LANDMARKS.esplanade, merlion: MERLION.c })
+        : undefined,
       facade: { wall: '#9fa9b4', glass: '#566f88', cols: 2, glow: 0.05 },
       // 滨海湾金沙的塔楼（OSM 建筑部件，高 100 m 以上、在金沙一带）用深色玻璃幕墙
       specialFacade: (b) => {
@@ -101,6 +110,7 @@ export default {
         return b.h > 100 && Math.hypot(b.p[0] - LANDMARKS.mbs[0], b.p[1] - LANDMARKS.mbs[1]) < 150 ? 'landmark' : null;
       },
     });
+    buildEsplanadeBridge(scene);
     // 金沙空中花园：OSM 的平台（min_height 193 → 207 m）上加泳池、灯带、绿化
     const deck = OSM_BUILDINGS.find((b) => b.m > 150 && b.h > 200 && b.p.length > 20);
     if (deck && LANDMARKS.tower3) buildSkyParkDetail(scene, { deck, tower3: LANDMARKS.tower3 });
@@ -109,12 +119,12 @@ export default {
     if (FLYER) buildFlyer(scene, FLYER); // 新加坡摩天轮：轮径 150 m、总高 165 m、28 个轿厢（官网 / Wikipedia）
     await step(0.72, tr('点亮城市与赛道', 'Lighting the city and the track'));
     // 白天的太阳：2026-10-09（周五）当地 16:30、北纬 1.3° 算出的方位 —— 高度角约 35°、方位角约 261°（偏西）；
-    // 灯杆位置没有可靠资料，不布置照明灯杆，夜间靠路面自身的泛光材质与建筑灯光
+    // 夜间在现有路面上做连续补光，并单独控制滨水地标灯光。
     const { stands, hitboxes } = buildSGStands(scene, track, {
       turns: TURNS,
       buildings: [...OSM_BUILDINGS, { p: PITB.p, h: PITB.h }].map((b) => ({ p: b.p, h: b.h })),
       water: OSM_AREAS.filter((a) => a.k === 'water'),
-      elevated: OSM_LINES.filter((l) => l.y > 0).map((l) => ({ p: l.p, w: l.w })),
+      deckUndersideAt,
       pitFace: { n0: frame.front[1] - frame.L / 2, n1: frame.front[1] + frame.L / 2 }, // 车库段在直道上的范围
 
     });

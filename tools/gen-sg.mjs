@@ -11,6 +11,7 @@
 // 坐标系与上海一致：x = 行驶方向右侧(+)，n = 起终点直道的行驶方向(+)，单位米；
 // 赛道按真实行驶方向（逆时针）排列。
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { joinBridgeWays } from './sg-road-network.mjs';
 
 const RAW = new URL('./osm-raw-sg/', import.meta.url);
 const read = (f) => JSON.parse(readFileSync(new URL(f, RAW), 'utf8'));
@@ -183,14 +184,6 @@ const overlapsTrack = (g) => {
   for (let i = 0; i < ordered.length; i += 3) if (pip(ordered[i], g)) return true;
   return false;
 };
-/** 折线按条件切成若干段：keep(点) 为真的连续点保留（至少 2 点） */
-const runsOf = (g, keep) => {
-  const out = []; let cur = [];
-  for (const p of g) { if (keep(p)) cur.push(p); else { if (cur.length > 1) out.push(cur); cur = []; } }
-  if (cur.length > 1) out.push(cur);
-  return out;
-};
-
 // 维修通道（OSM highway=raceway, raceway=pitlane，oneway）
 const pitEl = [...elements.values()].find((e) => e.tags?.raceway === 'pitlane');
 const race = read('race.json').elements.find((e) => e.id === 100484287);
@@ -261,9 +254,11 @@ const CENTER = [Math.round((Math.min(...xs) + Math.max(...xs)) / 2), Math.round(
 
 // 线状地物：道路、水道。与赛道重合的桥面保持贴地（赛道铺在上面），横跨赛道的高架保留高度
 const ROAD_W = { motorway: 24, motorway_link: 9, trunk: 20, trunk_link: 9, primary: 20, primary_link: 9, secondary: 16, secondary_link: 8, tertiary: 13, tertiary_link: 7, unclassified: 9, residential: 8, service: 5, living_street: 6, footway: 2.6, path: 2, cycleway: 2.6, pedestrian: 6, steps: 2, track: 3.5 };
-const lines = [];
-// 桥一直画到落地：高架（含横跨赛道的 Benjamin Sheares 桥等）保留赛道周边 KEEP.bridges 以内的路段，两端按原逻辑放缓落地；
-// 桥两端接壤的道路与建筑再保留 KEEP.nearBridge 以内，不让桥凭空截断在没有建模的空白里
+const lines = [], elevatedWays = [];
+const indoorEnds = new Set([...elements.values()].filter((e) => e.geometry && e.tags?.highway === 'corridor' && e.tags.indoor === 'yes')
+  .flatMap((e) => [e.geometry[0], e.geometry.at(-1)].map((p) => flat(proj([p])).join(','))));
+const detailedBridgeWays = new Set([35037538, 164881354, 694102537, 256505618]);
+const detailedRoadWays = new Set([173779730, 528539591, 35037535, 459186769]);
 const bridgeVerts = [], bridgeRuns = [];
 const distBridge = (p) => { let m = Infinity; for (const q of bridgeVerts) { const d = Math.hypot(p[0] - q[0], p[1] - q[1]); if (d < m) m = d; } return m; };
 for (const pass of [0, 1]) for (const e of elements.values()) {
@@ -272,75 +267,49 @@ for (const pass of [0, 1]) for (const e of elements.values()) {
   let k = null, w = 0, y = 0;
   if (t.highway === 'raceway') continue; // 赛道本身由中心线生成
   if (t.highway && ROAD_W[t.highway] && !t.area) {
-    if (t.tunnel && t.tunnel !== 'no') continue;
+    if ((t.tunnel && t.tunnel !== 'no') || t.indoor === 'yes' || (t.highway === 'footway' && t.covered === 'yes')) continue;
     k = 'road:' + (t.highway === 'trunk' ? 'primary' : t.highway === 'trunk_link' ? 'primary_link' : t.highway); w = ROAD_W[t.highway];
     if (t.lanes && /^(motorway|primary|secondary|tertiary|unclassified|trunk)/.test(t.highway)) w = Math.max(w * 0.5, parseInt(t.lanes, 10) * 3.4 + 2);
-    if (t.bridge && t.bridge !== 'no') y = parseInt(t.layer || '1', 10) || 1;
+    if (t.bridge && t.bridge !== 'no') y = Math.max(1, parseInt(t.layer || '1', 10) || 1);
+    else if (/_link$/.test(k) && Number(t.layer) > 0) y = Number(t.layer);
   } else if (t.waterway && /river|canal|stream|drain/.test(t.waterway)) {
     if (t.layer && parseInt(t.layer, 10) < 0) continue;
     k = 'water'; w = t.width ? parseFloat(t.width) : { river: 24, canal: 12, stream: 4, drain: 3 }[t.waterway] ?? 4;
   }
-  if (!k) continue;
+  if (!k || detailedBridgeWays.has(e.id) || detailedRoadWays.has(e.id)) continue;
   const g = proj(e.geometry);
+  if (g.length < 2) continue;
+  const samples = g.flatMap((p, i) => {
+    if (i === 0) return [p];
+    const a = g[i - 1], steps = Math.ceil(Math.hypot(p[0] - a[0], p[1] - a[1]) / 12);
+    return Array.from({ length: steps }, (_, j) => [a[0] + (p[0] - a[0]) * (j + 1) / steps, a[1] + (p[1] - a[1]) * (j + 1) / steps]);
+  });
   if (y > 0) { // 桥面与赛道重合的长度 > 40 m → 赛道在桥上，桥面贴地
     let on = 0;
-    for (let i = 1; i < g.length; i++) if (segDist(g[i], trackClosed) < 9 && segDist(g[i - 1], trackClosed) < 9) on += Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]);
+    for (let i = 1; i < samples.length; i++) {
+      const [d, tx, tn] = nearestSeg(samples[i]);
+      const dx = samples[i][0] - samples[i - 1][0], dn = samples[i][1] - samples[i - 1][1];
+      const length = Math.hypot(dx, dn);
+      if (d < 7 && Math.abs(dx * tx + dn * tn) > length * 0.9) on += length;
+    }
     if (on > 40) y = 0;
   }
-  // 高架简化：OSM 把立交拆成许多条、分两层高度，端点又对不齐，渲染出来断断续续还互相穿插。
-  // 统一成一个高度；匝道连接线（*_link）不画；步行桥、自行车桥保持贴近地面的低桥
-  if (y > 0 && k.startsWith('road:')) {
-    if (/_link$/.test(k)) continue;
-    y = 1;
-  }
-  if ((pass === 0) !== (y > 0)) continue;                    // 第 0 遍只处理高架，第 1 遍处理其余
-  if (pass === 0 && distToTrack(g) > KEEP.bridges) continue;
-  if (pass === 1 && distToTrack(g) > KEEP.roads && !inZone(g) && Math.min(...g.map((p) => distBridge(p))) > KEEP.nearBridge) continue;
-  let segs = runsOf(g, pass === 0 ? (p) => segDist(p, trackClosed) <= KEEP.bridges : (p) => segDist(p, trackClosed) <= KEEP.roads || distBridge(p) <= KEEP.nearBridge || zoneD(p) <= 0);
-  if (pass === 0) for (const sg of segs) if (Math.hypot(sg[sg.length - 1][0] - sg[0][0], sg[sg.length - 1][1] - sg[0][1]) > 60) { bridgeRuns.push(sg); for (let i = 0; i < sg.length; i += 2) bridgeVerts.push(sg[i]); }
-  if (y === 0 && k.startsWith('road:')) {
-    // 赛道自己走的路面：路网里与赛道重合 / 并行的部分由赛道取代，不再画一遍（否则会在赛道旁露出一条多余的灰色路面）；
-    // 横穿赛道的路只在护墙以内断开
-    segs = segs.flatMap((sg) => {
-      const flags = sg.map((p, i) => {
-        const a = sg[Math.max(0, i - 1)], b = sg[Math.min(sg.length - 1, i + 1)];
-        const dl = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-        const [d, tx, tn] = nearestSeg(p);
-        const parallel = Math.abs(((b[0] - a[0]) / dl) * tx + ((b[1] - a[1]) / dl) * tn) > 0.8;
-        return d > (parallel ? HW + 3 + w / 2 : WALL + 0.5); // 并行的路让出整个路幅，横穿的路只在护墙内断开
-      });
-      const out = []; let cur = [];
-      sg.forEach((p, i) => { if (flags[i]) cur.push(p); else { if (cur.length > 1) out.push(cur); cur = []; } });
-      if (cur.length > 1) out.push(cur);
-      return out;
-    });
-  }
-  for (const sg of segs) if (y === 0 || Math.hypot(sg[sg.length - 1][0] - sg[0][0], sg[sg.length - 1][1] - sg[0][1]) > 60) lines.push({ k, w: r1(w), y, p: flat(sg) });
-}
-
-
-// 高架分成多段的（OSM 把一座长桥拆成好几条 way）：相连的两端保持全高，只有真正落地 / 被截断的一端才放缓落地，
-// 否则每段两头都会往下塌，桥面成了断断续续的锯齿
-{
-  const elev = lines.filter((l) => l.y > 0);
-  const major = (l) => /^road:(motorway|primary|secondary|tertiary|unclassified|trunk)/.test(l.k) && l.w > 9;
-  // 离端点最近的、别的高架上的点：近（≤ 30 m）就把端点吸附过去，保证桥面连续、不留缺口
-  const nearest = (pt, self, tol) => {
-    let best = null, bd = tol;
-    for (const o of elev) {
-      if (o === self || major(o) !== major(self)) continue;
-      for (let i = 0; i < o.p.length; i += 2) { const d = Math.hypot(o.p[i] - pt[0], o.p[i + 1] - pt[1]); if (d < bd) { bd = d; best = [o.p[i], o.p[i + 1]]; } }
-    }
-    return best;
-  };
-  for (const l of elev) {
-    const n2 = l.p.length, tol = major(l) ? 30 : 5;
-    const a = nearest([l.p[0], l.p[1]], l, tol), b = nearest([l.p[n2 - 2], l.p[n2 - 1]], l, tol);
-    if (a) { l.p[0] = a[0]; l.p[1] = a[1]; }
-    if (b) { l.p[n2 - 2] = b[0]; l.p[n2 - 1] = b[1]; }
-    l.r = [a ? 0 : 1, b ? 0 : 1];
+  if ((pass === 0) !== (y > 0)) continue;
+  const distance = distToTrack(samples);
+  const p = flat(g);
+  if (y > 0) {
+    if (distance > KEEP.bridges) continue;
+    bridgeRuns.push(g);
+    bridgeVerts.push(...samples);
+    const highway = /^(motorway|trunk_link)$/.test(t.highway) || t.name === 'Sheares Avenue';
+    const height = highway ? 10 : (distance < WALL || t.name === 'Bayfront Avenue') ? 5.8 : y > 1 ? 4.8 : 1.4;
+    elevatedWays.push({ k, w: r1(w), p, height });
+  } else if (distance <= KEEP.roads || inZone(samples) || samples.some((point) => distBridge(point) <= KEEP.nearBridge)) {
+    // 同一条道路保留整个 OSM way；横穿赛道的地面道路铺在赛道路面之下。
+    lines.push({ k, w: r1(w), y: 0, p });
   }
 }
+lines.push(...joinBridgeWays(elevatedWays, indoorEnds));
 
 // 桥周边的范围（经纬度）：tools/fetch-osm-sg.sh 据此补取桥两端接壤的建筑与道路
 {

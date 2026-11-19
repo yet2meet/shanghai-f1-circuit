@@ -14,6 +14,7 @@ export const HW = 7.5; // 上海赛道半宽（真实路面宽约 13–15 m）�
  *   runoff   true = 弯道外侧有草坪与砂石缓冲区（专用赛道）；false = 街道赛，护墙紧贴路面
  *   ads      护墙标识带：[[背景色, 文字色, 文字], …]
  *   kerbCurv 弯道路肩的曲率阈值
+ *   finishAsphalt(material, path, uvMetres) 材质生成后的赛道专用设置
  */
 export function buildTrack(scene, cfg) {
   const { points: TRACK_POINTS, pit: OSM_PIT, hw = 7.5, runoff = true, ads, kerbCurv = 0.005, pitSide = 'right' } = cfg;
@@ -123,10 +124,13 @@ export function buildTrack(scene, cfg) {
     gr2.addColorStop(0.2, 'rgba(0,0,0,0)'); gr2.addColorStop(0.5, 'rgba(0,0,0,0.28)'); gr2.addColorStop(0.8, 'rgba(0,0,0,0)');
     c.fillStyle = gr2; c.fillRect(0, 0, w, h);
   }, [1, 1]);
+  const uvMetres = 16;
   const asphalt = new THREE.Mesh(
-    ribbon(path, { offA: HW, offB: -HW, y: 0.16, uv: 16 }),
+    ribbon(path, { offA: HW, offB: -HW, y: 0.16, uv: uvMetres }),
     groundDetail(floodlit(new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.92 }), 0.55), 'asphalt', { size: 3, k: 0.7, mk: 0.12 })
   );
+  asphalt.name = 'circuit-asphalt';
+  cfg.finishAsphalt?.(asphalt.material, path, uvMetres);
   g.add(asGround(asphalt, -1.2));
 
   // 白色边线

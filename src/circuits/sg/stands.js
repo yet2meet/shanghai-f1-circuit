@@ -15,7 +15,6 @@ const BLOCK = 28;
 const AISLE_W = 2 * PITCH;
 const ENTRY_W = 2.8;
 const ENTRY_ROWS = 3;
-const UNDER_H = 4.6;         // 高架桥下的看台限高（桥面下沿约 5.5 m）
 
 const inPoly = (x, n, p) => {
   let c = false;
@@ -23,15 +22,6 @@ const inPoly = (x, n, p) => {
     if ((p[i + 1] > n) !== (p[j + 1] > n) && x < ((p[j] - p[i]) * (n - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) c = !c;
   }
   return c;
-};
-const segD = (x, n, p) => { // 点到折线（扁平 [x,n,…]）的最短距离
-  let best = Infinity;
-  for (let i = 0; i + 3 < p.length; i += 2) {
-    const ax = p[i], an = p[i + 1], dx = p[i + 2] - ax, dn = p[i + 3] - an, l2 = dx * dx + dn * dn || 1;
-    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (n - an) * dn) / l2));
-    best = Math.min(best, Math.hypot(x - ax - dx * t, n - an - dn * t));
-  }
-  return best;
 };
 
 function arcLength(at, last, depth) {
@@ -208,10 +198,10 @@ function makeDeck(at, rows, front, backHeight, lowerLanding, backOpenings) {
 
 /**
  * @param track  buildTrack 的返回值
- * @param data   { turns: TURNS, buildings: [{p, h}], water: [{p}], elevated: [{p, w}], pitFace: { n0, n1 } 维修楼立面沿 n 的范围 }
+ * @param data   { turns: TURNS, buildings: [{p, h}], water: [{p}], deckUndersideAt, pitFace: { n0, n1 } 维修楼立面沿 n 的范围 }
  *               用来避开已有建筑与水面，并在高架桥下压低看台
  */
-export function buildSGStands(scene, track, { turns, buildings, water, elevated, pitFace }) {
+export function buildSGStands(scene, track, { turns, buildings, water, deckUndersideAt, pitFace }) {
   const N = track.N;
   const mPerPt = track.total / N;
   const turnIdx = (n) => { const [, x, y] = turns.find((t) => t[0] === n); return track.nearest(x, -y); };
@@ -228,7 +218,6 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
   };
   const solids = buildings.filter((b) => b.h > 2);
   const ptsOf = (i, L) => { const half = Math.max(2, Math.round(L / 2 / mPerPt)), ks = []; for (let t = -half; t <= half; t++) ks.push((i + t + N) % N); return ks; };
-  const underBridge = (x, n) => elevated.some((l) => segD(x, n, l.p) < l.w / 2 + 2);
 
   /** 沿赛道扫掠足迹上的采样点：返回 [与建筑 / 水面重叠数, 在高架桥下的点数] */
   const probe = (i, side, L, D, shiftPts, frontOffset) => {
@@ -240,7 +229,9 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
         const x = P.x + nor.x * side * d, n = -(P.z + nor.z * side * d);
         total++;
         if (solids.some((b) => inPoly(x, n, b.p)) || water.some((w) => inPoly(x, n, w.p))) bad++;
-        if (underBridge(x, n)) under++;
+        const ceiling = deckUndersideAt(x, n);
+        if (ceiling < 2.7) bad += 3;
+        else if (Number.isFinite(ceiling)) under++;
       }
     }
     return [bad, under, total];
@@ -281,14 +272,19 @@ export function buildSGStands(scene, track, { turns, buildings, water, elevated,
     let D = D0;
     for (const k of ks) { const c = track.curv[k] * side; if (c > 1e-4) D = Math.min(D, Math.max(3, 1 / c - frontOffset - 3)); }
     // 在高架桥下的部分限高，不让座席穿过桥面
-    let H = H0;
-    for (let j = 0; j < ks.length; j += 4) {
-      const P = track.pts[ks[j]], nor = track.nor[ks[j]];
-      if (underBridge(P.x + nor.x * side * (frontOffset + D / 2), -(P.z + nor.z * side * (frontOffset + D / 2)))) { H = Math.min(H, UNDER_H); break; }
-    }
     const seatFront = frontOffset + (parent?.depth ?? 0); // 上层座席接到下层最后一排
     const base = parent?.H ?? 0.3;
-    const rows = Math.max(3, Math.round(D / ROW_D)), rise = (H - (parent ? 0 : 0.3)) / rows;
+    let ceiling = Infinity;
+    const rows = Math.max(3, Math.round(D / ROW_D));
+    for (const k of ks) {
+      const P = track.pts[k], nor = track.nor[k];
+      for (let row = 0; row <= rows; row++) {
+        const offset = (seatFront + row * ROW_D) * side;
+        ceiling = Math.min(ceiling, deckUndersideAt(P.x + nor.x * offset, -(P.z + nor.z * offset)));
+      }
+    }
+    const H = Math.min(H0, Math.max(0.8, ceiling - base - 1.45));
+    const rise = (H - (parent ? 0 : 0.3)) / rows;
     const topY = (r) => base + (r + 1) * rise;
     const last = ks.length - 1;
     const out = ks.map(k => new THREE.Vector3(track.nor[k].x * side, 0, track.nor[k].z * side));

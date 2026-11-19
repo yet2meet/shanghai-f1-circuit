@@ -246,7 +246,7 @@ export function merlionStatue(scale = 1) {
           vec3 stoneNormal = normalize(vNormalO);
           float frontLight = max(dot(stoneNormal, normalize(vec3(3.2, 1.0, 4.9) - vPosO)), 0.0);
           float backLight = max(dot(stoneNormal, normalize(vec3(-3.0, 1.3, -3.5) - vPosO)), 0.0);
-          totalEmissiveRadiance += diffuseColor.rgb * uNight * (0.09 + 0.43 * frontLight + 0.27 * backLight);`);
+          totalEmissiveRadiance += diffuseColor.rgb * uNight * (0.09 + 0.54 * frontLight + 0.33 * backLight);`);
   };
   mat.customProgramCacheKey = () => 'merlionStone';
   const stone = new THREE.Mesh(geo, mat);

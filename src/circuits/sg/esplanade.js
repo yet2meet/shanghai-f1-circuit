@@ -90,7 +90,7 @@ export function buildEsplanadeRoof(building, frame, root) {
   function pane(a, b, c) {
     const y = (a.y + b.y + c.y) / 3;
     color.copy(glass).multiplyScalar(0.79 + random() * 0.37);
-    const light = mix(0.65, 0.07, THREE.MathUtils.smoothstep(y, 12, 33)) * (0.75 + random() * 0.35);
+    const light = mix(0.75, 0.07, THREE.MathUtils.smoothstep(y, 12, 33)) * (0.75 + random() * 0.35);
     for (const p of [a, b, c]) {
       paneXYZ.push(p.x, p.y, p.z);
       paneRGB.push(color.r, color.g, color.b);
@@ -165,6 +165,6 @@ export function esplanadeFacade() {
     }
   }, [1 / 12, 1 / 13]);
   const material = std('#ffffff', { map: facade(false), roughness: 0.53, emissive: '#ffffff', emissiveMap: facade(true), emissiveIntensity: 0 }, 0.14);
-  nightEmissives.push({ m: material, max: 0.56 });
+  nightEmissives.push({ m: material, max: 0.68 });
   return material;
 }
