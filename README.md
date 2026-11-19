@@ -1,102 +1,90 @@
-# 上海国际赛车场 · Shanghai International Circuit
+# F1 赛道 3D 浏览器
 
-在浏览器里探索 F1 赛道的 3D 模型。目前有两条赛道：
+**简体中文** · [English](README.en.md)
 
-- **上海国际赛车场**：赛道、看台、维修区、围场与周边环境，查看各看台位置与参考票价，放大到具体分区和座位，并切换到座位视角看赛道。
-- **新加坡滨海湾街道赛道**：赛道（19 弯）、维修通道与维修楼（F1 Pit Building）、13 座看台（可选座）与官网标价、赛道周边的城市建筑、道路、水域与新加坡摩天轮；夜赛赛道，打开默认是夜景。看台位置依据官网与官方平面图，尺寸与座位数为示意（见下方精度说明）。
+在浏览器中探索上海国际赛车场和新加坡滨海湾街道赛道。可以查看看台与参考票价、进入座位视角，并从赛道周边的城市或场馆地标定位。
 
-支持白天 / 黑夜（夜间自动亮灯）、中英双语和手机竖屏。
+| 赛道 | 模型内容 | 在线体验 |
+| --- | --- | --- |
+| **上海国际赛车场** · 5.451 km · 16 弯 | 主看台和各分区、维修楼、围场、内场卡丁车场，以及周边道路与地铁。默认白天。 | [打开上海](https://shanghai-f1-circuit.pages.dev/?c=sh) |
+| **新加坡滨海湾街道赛道** · 4.927 km · 19 弯 | 13 座可选座的看台、F1 维修楼和维修通道、城市道路与桥梁，以及滨海湾地标。默认夜晚。 | [打开新加坡](https://shanghai-f1-circuit.pages.dev/?c=sg) |
 
-## 切换赛道
+## 浏览方式
 
-点击左上角的品牌条，选择赛道。切换是接力式的近乎无缝：当前画面镜头拉升、淡入并缩回地球全貌 → 页面刷新 → 新页面的地球接着从旧城市转到新城市，再放大进入新赛道。**第一次打开默认是上海；之后每次打开都回到上次退出时的赛道**（记在浏览器的 localStorage 里，同一浏览器 = 同一用户）。分享链接带 `?c=sg` 时按链接打开对应赛道。
+- 从左上角的赛道菜单切换城市。切换时通过地球视角过渡。首次打开无参数的首页时显示上海，之后会记住当前浏览器上次查看的赛道。链接中的 `?c=sh` 或 `?c=sg` 会优先选中对应赛道。
+- 从小地图、弯号或地标定位。打开**看台与票价**可查看分区，选中座位后可切换到对应视角。票价采用项目收录的官方资料，座位编号由模型生成。
+- 支持中英文界面、手机竖屏、昼夜切换和卫星底图。分享功能可以生成带二维码的当前视角海报，也可以复制赛道链接。
 
-新增一条赛道：在 `src/circuits/` 里加一个档案（参考 `shanghai.js` / `singapore.js`：数据、`build()`、文案），并在 `src/circuits/index.js` 与 `src/venues.js` 注册。
+## 新加坡场景
 
-## 运行
+- **夜景**分别调节赛道路面与维修通道的补光。滨海艺术中心、鱼尾狮和摩天轮有各自的夜间照明，滨水区域增加了局部水面反光。
+- **路网与桥梁**按 OSM 共用端点恢复滨海桥、Sheares 高架匝道和 Jubilee 步行桥的连接，同一路幅衔接处统一标高与铺面。桥墩避让赛道与周边道路，桥下看台按模型净空布置。
+- **看台**沿赛道曲线建模，设有阶梯过道、出入口和护栏。**维修区**包含车队车库、快车道、换胎位、维修墙指挥台和工作人员。
+
+## 本地运行
+
+使用 Node.js 和 npm 在仓库根目录启动开发服务。
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-## 精度说明
+打开终端给出的本地地址。用以下命令生成并预览生产构建。
 
-| 内容 | 来源 | 精度 |
-| --- | --- | --- |
-| 赛道中心线（5459 m，官方 5451 m）、维修通道 | OpenStreetMap | 测绘数据 |
-| 看台 A / B / H / K / E 位置、长度、进深、高度 | OpenStreetMap 建筑轮廓 | 测绘数据 |
-| 主看台顶棚、两端“翼”形结构、H/K 荷叶顶棚与立柱、维修楼、围场行宫 | OpenStreetMap 三维建筑部件（含高度） | 测绘数据 |
-| 草地看台 F / J、道路与高架、水系、地铁 11 号线、停车场、绿地 | OpenStreetMap | 测绘数据 |
-| 座位：间距 0.55 m、排距 0.85 m，每 28 座一条过道 | 按常规看台尺寸排布 | 示意（主看台约 2.6 万座；公开资料称主看台约 2.9 万座） |
-| 票区（A铂金 / A上 / A下 / B / H/K / E / C/F/J）与票价 | 2026 官方票价表与座位图 | 官方；铂金区与发车点位置按官方示意图量取 |
-| 排号、座号 | 模型内按位置计数 | 不是票面座号（官方未公布座位图细节） |
-| 维修楼外形（长 322 m、进深 31 m、高 12 m） | OpenStreetMap | 测绘数据；车库、楼层、阳台等内部构造按 F1 维修楼常见形式建模 |
-| 车库顺序（11 支车队，每队 3 间） | 2025 车队积分榜；冠军车队靠维修通道入口（formula1.com） | 规则推定，未找到上海站官方车库分配图 |
-| 车队配色 | 各队常用代表色 | 近似值，非官方色值 |
-| 住宅区内的楼房 | OSM 只有住宅区范围 | 按区域生成的示意体块 |
-| 砂石缓冲区宽度 | OSM 未标注 | 按弯道曲率估算 |
-| C 草地 | OSM 无轮廓；位置据观赛指南（5 号弯一带，可看 3–4 号弯爬坡与 5–8 号弯）与观众反馈；轮廓按卫星影像描出 | 位于 4 号弯出弯至 5 号弯出弯直道外侧，边界为近似 |
-| 内场卡丁车场（上赛卡丁车）赛道走向、维修/连接道 | OpenStreetMap（闭合赛道 1235 m；公开资料 1.234 km、18 个弯） | 测绘数据；路宽 8 m、路肩、轮胎墙、起终点门架按常见卡丁车场形式建模 |
-| 内场公共卫生间（25 座） | OpenStreetMap `amenity=toilets` 轮廓 | 位置为测绘数据；高度、立面按常见单层卫生间亭建模 |
-| 卡丁车场配套楼 | OSM 无名称，与卡丁车赛道同批录入、紧邻入口 | 用途为推定 |
-| 其余内场配套楼 | OSM 只有轮廓、无名称与用途 | 轮廓为测绘数据；立面为示意 |
+```bash
+npm run build
+npm run preview
+```
 
-车队名称牌默认以文字显示。如有授权的车队标志，放进 `public/brand/` 并在 `manifest.json` 中登记即可自动替换，说明见 `public/brand/README.md`。
+生产构建输出到 `dist/`，线上站点由 Cloudflare Pages 提供。新增赛道时，在 `src/circuits/` 添加场景档案，并在赛道注册表和启动页场馆列表登记。[赛道注册表](src/circuits/index.js) · [场馆列表](src/venues.js)
 
-## 新加坡滨海湾街道赛道 · 精度说明
+## 数据与模型精度
 
-只做查得到的内容；没有可核实资料的不做（下表“未做”）。
+### 上海国际赛车场
 
-| 内容 | 来源 | 精度 |
-| --- | --- | --- |
-| 赛道中心线（4928 m，官方 4.927 km、19 弯） | bacinger/f1-circuits `sg-2008.geojson`（MIT，对应 2023 年起的布局） | 测绘数据；按真实行驶方向（逆时针）排列 |
-| 弯号位置 | 官方 19 弯的左右方向序列（formula1.com、singaporegp.sg）与中心线曲率对应 | 1–3、5、7–14、16–19 号为曲率识别的弯心；4、6、15 号是官方称为 kink 的小角度弯，取路段内曲率最大处，位置为近似 |
-| 维修通道（在行驶方向左侧） | OpenStreetMap `raceway=pitlane` | 进出场走向取自测绘数据；接近车库时按立面和主直道边缘调整示意宽度 |
-| 维修楼与通道 | OSM 走向；[FIA 2026 新加坡站维修通道图](https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_pit_lane_v2.pdf#page=2) | 41 个编号开间按 FIA 图分配，每队一个比赛换胎位；白线分隔车库侧工作区和快车道，车队指挥台沿维修墙布置。开间尺寸、通道宽度、指挥台位置与内部陈设为示意 |
-| 看台（13 座：Pit、Super Pit、Pit Exit、Turn 1、Turn 2、Raffles、Republic、Stamford、Padang、Empress、Connaught、Bayfront、Marina Bay） | 新加坡大奖赛官网各看台页面（所在弯道、门号、通行票区）+ 官方 Circuit Park Map（红色标记所在路段与一侧） | 看台所在路段与赛道侧别有官方依据。座席面沿赛道曲线连续展开，座距 0.55 m、排距 0.85 m。弧形看台的阶梯过道沿径向对齐。看台尺寸、座位和内部出入口为示意，支持选座和座位视角。高架桥下的看台限高。官方平面图不按比例绘制。 |
-| 票价 | 官网各看台页面当前显示的三日票成人标价（新币，含 9% GST） | 页面标题为 2027 年赛事，未找到 2026 年价格，界面上已注明；“售罄 / 有限”状态随时变化，未收录 |
-| 建筑（含高度）、道路与高架桥、水域、公园 | OpenStreetMap | 测绘数据；只保留赛道两侧约 380 m（建筑）、340 m（道路）内的地物，加上高架桥两端接壤的 300 m 和两个地标区域；与赛道重叠的建筑、与赛道重合的路面不画；远处的岛与零散绿地不画；高架桥做了简化：OSM 把立交拆成很多条、分两层，端点又对不齐，这里统一成一个高度、不画匝道连接线，相邻端点（30 m 内）吸附对齐、保持全高，只有真正落地的端才放缓下坡 |
-| 地标区域：滨海湾金沙（三座塔楼 193 m + 天空花园、购物中心、艺术科学博物馆、Helix 桥）、鱼尾狮公园 | OpenStreetMap（建筑与建筑部件含高度、公园、道路）；鱼尾狮雕像高 8.6 m 取自公开介绍，位置取自 OSM `Merlion Fountain` | 两个地标区域（范围见 `tools/landmark-zones.json`）内的建筑、道路、绿地、水面完整保留，数据由 `tools/fetch-osm-sg-landmarks.sh` 单独下载；鱼尾狮按实景照片做成一整块封闭实心网格（有向距离场 + Marching Cubes，部件不穿插、不空心），细节为示意；没有找到许可证允许的现成模型（能搜到的多为 CC BY-NC-SA / NC-ND 或来源不明），所以自己建模 |
-| 滨海艺术中心 | OSM 的音乐厅、剧院及底座轮廓；[DP Architects](https://www.dpa.com.sg/projects/esplanade-theatres-on-the-bay/) 和 [MERO](https://www.mero.com.sg/project_references/esplanade-theatres-on-the-bay-green-mark-gold/) | 两座屋顶依各自的 OSM 外沿和高度建模，三角玻璃、铝制折板及夜间灯光参考建筑资料；屋面曲率和构件排布为近似 |
-| 新加坡摩天轮 | 位置与轮面朝向取自 OSM `big_wheel` 轮廓；轮径 150 m、总高 165 m、28 个轿厢取自官网 / Wikipedia / 新加坡国家图书馆 | OSM 把它建成实心圆盘，已改为镂空轮圈；轿厢外形、辐条与支腿为示意 |
-| 窗户灯光 | 无资料 | 示意：按楼高分几种亮灯方式（写字楼整层亮灭、住宅零星暖光、酒店较密、暗楼），每栋随机错开贴图 |
-| 赛道路宽 | OSM 未标注 | 示意：13 m |
-| 护墙标识 | formula1.com 与官网使用的赛事全称 | 仅赛道名与赛事全称的文字；各弯道的赞助商布置没有可靠资料，未做 |
-| 白天太阳 | 按 2026-10-09 当地 16:30、北纬 1.3° 计算 | 高度角约 35°、方位角约 261°；2026 年正赛为 10 月 11 日当地 20:00 发车 |
-| **未收录** | Promenade 看台、Chicane @ Turn 2 看台 | 官网有售但没有位置说明（页面无法读取 / 404） |
-| 起终点线与发车格 | 官方 Circuit Park Map 上格子旗标记的位置（19 号弯出弯之后，约占到 1 号弯那段直道的 28%） | 位置近似（该图不按比例绘制）；发车格按 F1 常规 22 个车位、前后相隔 8 m、左右交错，杆位在哪一侧官方资料没写，取左侧示意；落在弯道里的车位不画 |
-| 地标标注 | OSM 同名地物的位置 | 金沙、鱼尾狮公园、摩天轮、滨海艺术中心、滨海湾花园像弯号一样标出，点击飞过去；弯号在手机窄屏上也显示 |
-| 滨海湾花园 | OSM（公园、Flower Dome、Cloud Forest、超级树丛轮廓） | 超级树 OSM 没有逐棵的位置，按树丛轮廓示意 12 棵（树丛共 12 棵，高度 25–50 m 取自官方介绍）；夜里树冠发光 |
-| 金沙空中花园 | OSM 平台（min_height 193 → 207 m） | 泳池长度（150 m）取自公开介绍，位置、屋顶绿化与灯带为示意；塔楼用深色玻璃幕墙 |
-| **未做** | 赛道灯杆位置 | 无资料 |
+| 内容 | 依据与精度 |
+| --- | --- |
+| 赛道、维修通道、看台和场馆 | 赛道中心线及维修通道来自 OpenStreetMap。A、B、H、K、E 看台的主要尺寸来自 OSM 建筑轮廓。主看台翼形结构、H/K 顶棚、维修楼及围场建筑参考 OSM 三维部件。 |
+| 看台、座位和票价 | 票区和票价参考久事体育的 2026 年中国大奖赛官方资料。模型座距 0.55 m、排距 0.85 m，按示意分区和过道排布。排号和座号为模型编号。 |
+| 草地看台与缓冲区 | F/J 草地及场馆周边地物参考 OSM。C 草地的位置参考观赛资料，边界按卫星图近似描绘。砂石缓冲区宽度按弯道曲率估算。 |
+| 维修楼与内场 | 维修楼轮廓来自 OSM，内部车库、楼层和阳台为示意，车库顺序参考 2025 年车队积分榜。内场卡丁车场、卫生间和配套设施的位置来自 OSM，宽度、立面和内部细节按场景建模。 |
+
+### 新加坡滨海湾街道赛道
+
+| 内容 | 依据与精度 |
+| --- | --- |
+| 赛道走向与弯号 | 中心线采用 [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) 的 `sg-2008.geojson`，对应 2023 年起的 19 弯布局。弯号位置结合官方弯序和曲率估算。赛道路宽、起终点线与发车格位置为示意。 |
+| 看台位置与座位 | 依据新加坡大奖赛的看台资料和 Circuit Park Map。收录 Pit、Super Pit、Pit Exit、Turn 1、Turn 2、Raffles、Republic、Stamford、Padang、Empress、Connaught、Bayfront 和 Marina Bay。尺寸、出入口和座位编号为模型示意。 |
+| 票价 | 收录自页面标题为 2027 年赛事的官方成人三日票标价，币种为新加坡元，含 9% GST。票价与库存以官方售票渠道为准。 |
+| 维修楼与维修通道 | 轮廓与进出场走向来自 OSM。车库开间和换胎位分配参考 [FIA 2026 新加坡站维修通道图](https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_pit_lane_v2.pdf#page=2)，通道宽度、指挥台与内部陈设为示意。 |
+| 城市道路与桥梁 | 走向、道路共用端点、岸线和周边地物来自 OSM。高架坡度、标高、桥身和桥墩按场景简化。滨海桥的车道、步道和护栏单独建模。 |
+| 地标与灯光 | 滨海艺术中心的音乐厅和剧院参考 OSM 轮廓及 [DP Architects](https://www.dpa.com.sg/projects/esplanade-theatres-on-the-bay/) 和 [MERO](https://www.mero.com.sg/project_references/esplanade-theatres-on-the-bay-green-mark-gold/) 的建筑资料。鱼尾狮、摩天轮、金沙空中花园和滨海湾花园结合地图与公开资料建模，造型细节与夜景照明为近似。 |
 
 ## 更新地图数据
 
+仓库已包含地图输入与生成数据，本地启动可直接使用。可在 Bash 中运行以下命令刷新相应赛道的 OSM 数据。
+
 ```bash
 # 上海
-bash tools/fetch-osm.sh tools/osm-raw   # 从 Overpass API 重新下载
-node tools/gen-track.mjs                # 赛道投影基准
-node tools/gen-osm.mjs                  # 生成 src/osm-data.js
+bash tools/fetch-osm.sh tools/osm-raw
+node tools/gen-track.mjs
+node tools/gen-osm.mjs
 
 # 新加坡
-bash tools/fetch-osm-sg.sh              # 沿赛道取一条带状区域（整块矩形会超时）
-bash tools/fetch-osm-sg-landmarks.sh    # 滨海湾金沙、鱼尾狮公园两个地标区域
-node tools/gen-sg.mjs                   # 生成 src/circuits/sg/data.js 与 projection.json
+bash tools/fetch-osm-sg.sh
+bash tools/fetch-osm-sg-landmarks.sh
+node tools/gen-sg.mjs
 ```
 
-## 数据来源与许可
+新加坡生成脚本输出 `src/circuits/sg/data.js` 与 `projection.json`，并刷新用于获取桥梁周边地物的查询范围。
 
-- 地图数据 © [OpenStreetMap](https://www.openstreetmap.org/copyright) 贡献者，按 ODbL 许可使用。
-- 投影基准与新加坡赛道所用的赛道中心线来自 [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits)（MIT）。
-- 启动页地球轮廓来自 [world-atlas](https://github.com/topojson/world-atlas)（Natural Earth，公有领域）。
-- 3D 渲染：[three.js](https://threejs.org/)。
+## 来源与许可
 
-本项目为非官方的爱好者作品，与 Formula 1、FIA、上海国际赛车场、新加坡大奖赛组织方及久事体育均无关联。
+- 地图数据 © [OpenStreetMap 贡献者](https://www.openstreetmap.org/copyright)，按 ODbL 使用。赛道中心线资料来自 [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits)（MIT）。
+- 3D 渲染使用 [Three.js](https://threejs.org/)，开发和构建使用 Vite。启动页的地球轮廓来自 [world-atlas](https://github.com/topojson/world-atlas)（Natural Earth，公有领域），卫星底图来自 Esri World Imagery。
+- [地面纹理来源](public/tex/SOURCES.md) · [品牌素材来源](public/brand/SOURCES.md) · [品牌素材配置](public/brand/README.md)
 
-## 版权与免责声明
+© 2026 yet2meet，保留所有权利。项目源代码和模型的权利条款见 [LICENSE](LICENSE)，第三方内容适用各自的许可。
 
-© 2026 yet2meet，保留所有权利。本项目代码与模型未经作者书面许可不得复制、修改、分发或部署，详见 [LICENSE](LICENSE)。
-
-本项目为个人非官方作品，与 Formula 1、FIA、上海国际赛车场、新加坡大奖赛组织方及各车队无隶属或合作关系；票价、座位等信息仅供参考，以官方渠道为准。
-
+本项目为非官方爱好者作品。观赛信息仅供参考，票价、座位和入场安排以赛事组织方发布的信息为准。
