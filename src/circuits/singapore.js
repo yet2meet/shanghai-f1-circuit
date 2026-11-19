@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { t } from '../i18n.js';
 import { TRACK_POINTS, TRUE_NORTH, TURNS, PIT, VENUE, CENTER, FLYER, PITB, MERLION, LANDMARKS, GROVE, OSM_BUILDINGS, OSM_AREAS, OSM_LINES } from './sg/data.js';
 import { buildFlyer, buildMerlion, buildStartGrid, buildSkyParkDetail, buildSupertrees } from './sg/landmarks.js';
+import { buildEsplanadeRoof, esplanadeFacade } from './sg/esplanade.js';
 import { buildSGPitLane, SG_GARAGE_SLOTS } from './sg/pitlane.js';
 import { buildPitBuilding } from '../pitbuilding.js';
 import { seatColor, seatMatrix, seatWorld, seatFacing, SELECTED_COLOR } from '../seatkit.js';
@@ -89,13 +90,16 @@ export default {
     });
     buildSGPitLane(scene, PIT, track, pitb);
     await step(0.55, tr('加载周边道路、水系与建筑', 'Loading roads, water and buildings'));
-    // 立面：偏深的玻璃幕墙，每格两扇窗，夜里各自亮灯，远看是城市天际线的样子
+    const artsFacade = esplanadeFacade();
     buildOSM(scene, { OSM_BUILDINGS, OSM_AREAS, OSM_LINES }, {
       treeKeepOut: [MERLION && { c: MERLION.c, r: 17 }].filter(Boolean), // 鱼尾狮周围不种树，雕像看得清
-      durian: true, // 滨海艺术中心的两个圆顶壳（OSM 标为 dome，高 35 m）
+      domeRoof: buildEsplanadeRoof,
       facade: { wall: '#9fa9b4', glass: '#566f88', cols: 2, glow: 0.05 },
       // 滨海湾金沙的塔楼（OSM 建筑部件，高 100 m 以上、在金沙一带）用深色玻璃幕墙
-      specialFacade: (b) => (b.h > 100 && Math.hypot(b.p[0] - LANDMARKS.mbs[0], b.p[1] - LANDMARKS.mbs[1]) < 150 ? 'landmark' : null),
+      specialFacade: (b) => {
+        if (b.n === 'Esplanade Theatres on the Bay') return artsFacade;
+        return b.h > 100 && Math.hypot(b.p[0] - LANDMARKS.mbs[0], b.p[1] - LANDMARKS.mbs[1]) < 150 ? 'landmark' : null;
+      },
     });
     // 金沙空中花园：OSM 的平台（min_height 193 → 207 m）上加泳池、灯带、绿化
     const deck = OSM_BUILDINGS.find((b) => b.m > 150 && b.h > 200 && b.p.length > 20);

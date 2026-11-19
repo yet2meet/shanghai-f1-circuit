@@ -299,47 +299,11 @@ function buildWing(b, put) {
 }
 
 /**
- * 圆顶壳体（滨海艺术中心的“榴莲”）：以建筑轮廓的外接椭圆为底、按 OSM 高度做半椭球玻璃壳，
- * 壳面上一圈圈排满朝外的三角形铝制遮阳片（真实建筑的遮阳片约 7000 片，这里按壳面面积约每 10 m² 一片示意）。
- */
-function durianDome(b, root) {
-  const P = principal(b.p);
-  const H = b.h, a = P.L / 2, c = P.W / 2;
-  const group = new THREE.Group();
-  group.position.set(P.cx, 0, -P.cn);
-  group.rotation.y = Math.atan2(P.un, P.ux);
-  const glass = new THREE.MeshStandardMaterial({ color: '#56728c', roughness: 0.2, metalness: 0.4, emissive: '#ffd9a0', emissiveIntensity: 0, side: THREE.DoubleSide });
-  nightEmissives.push({ m: glass, max: 0.55 });
-  const shell = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2).scale(a, H, c), glass);
-  shell.castShadow = true; shell.receiveShadow = true;
-  group.add(shell);
-  // 遮阳片：沿纬线一圈圈排布，朝壳面外法线
-  const spots = [];
-  const rings = Math.max(8, Math.round(H / 2.2));
-  for (let i = 0; i < rings; i++) {
-    const phi = ((i + 0.5) / rings) * (Math.PI / 2) * 0.97;
-    const circ = 2 * Math.PI * Math.sqrt((a * a + c * c) / 2) * Math.sin(phi);
-    const k = Math.max(5, Math.round(circ / 3.1));
-    for (let j = 0; j < k; j++) {
-      const th = ((j + (i % 2) * 0.5) / k) * Math.PI * 2;
-      const x = a * Math.sin(phi) * Math.cos(th), y = H * Math.cos(phi), z = c * Math.sin(phi) * Math.sin(th);
-      const n = new THREE.Vector3(x / (a * a), y / (H * H), z / (c * c)).normalize();
-      spots.push([x, y, z, n]);
-    }
-  }
-  const fin = new THREE.InstancedMesh(new THREE.ConeGeometry(0.95, 2.1, 3).translate(0, 1.05, 0), std('#f1f3f6', { roughness: 0.4, metalness: 0.2 }, 0.7), spots.length);
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
-  spots.forEach(([x, y, z, n], i) => { q.setFromUnitVectors(up, n); q.multiply(new THREE.Quaternion().setFromAxisAngle(up, (i * 1.7) % 6.28)); fin.setMatrixAt(i, m4.compose(new THREE.Vector3(x, y, z).addScaledVector(n, -0.15), q, one)); });
-  fin.castShadow = true;
-  group.add(fin);
-  root.add(group);
-}
-
-/**
  * data：{ OSM_BUILDINGS, OSM_AREAS, OSM_LINES }（由赛道档案提供）；
 
  * opts.treeKeepOut：不种树的圆形区域 [{ c: [x, n], r }]
- * opts.durian：为 true 时，OSM 标为 dome 的高大建筑（滨海艺术中心）做成带遮阳片的圆顶壳
+ * opts.domeRoof(b, frame, root)：为赛道档案提供高大圆顶地标的专用建模
+ * opts.specialFacade(b)：指定城市幕墙样式名或自定义材质
  * opts.venueZone(p)：判断建筑是否属于场馆自身（用于场内配套楼、顶棚等专门造型），不传则全部按普通建筑处理
  */
 export function buildOSM(scene, data, opts = {}) {
@@ -599,7 +563,7 @@ export function buildOSM(scene, data, opts = {}) {
   const put = (mat, g) => { if (g.index) g = g.toNonIndexed(); if (!bucket.has(mat)) bucket.set(mat, []); bucket.get(mat).push(g); };
   const venueZone = opts.venueZone || (() => false);
   for (const b of OSM_BUILDINGS) {
-    if (b.r === 'dome' && opts.durian && b.h > 15) { durianDome(b, root); continue; }
+    if (b.r === 'dome' && opts.domeRoof && b.h > 15) { opts.domeRoof(b, principal(b.p), root); continue; }
     const A = polyArea(b.p);
     const hh = Math.max(0.3, b.h - b.m);
     const isVenue = venueZone(b.p) && b.k !== 'industrial';
@@ -668,7 +632,11 @@ export function buildOSM(scene, data, opts = {}) {
     } else if (b.k === 'industrial') { put(MAT.industrialRoof, caps); put(MAT.industrial, sides || caps); }
     else if (cityFacades && hh >= 6) {
       put(MAT.roof, caps);
-      put(cityFacades[opts.specialFacade?.(b) || pickFacade(hh)], offsetUV(sides || caps, rand() * 7.2, rand() * 27.2));
+      const facade = opts.specialFacade?.(b);
+      const defaultStyle = !facade || facade.isMaterial ? pickFacade(hh) : facade;
+      const du = rand() * 7.2, dv = rand() * 27.2;
+      if (facade?.isMaterial) put(facade, sides || caps);
+      else put(cityFacades[defaultStyle], offsetUV(sides || caps, du, dv));
     } else { put(MAT.roof, caps); put(hh >= 6 ? windowWall : MAT.plain, sides || caps); }
   }
 
