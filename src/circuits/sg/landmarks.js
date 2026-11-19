@@ -8,7 +8,7 @@ import { asGround } from '../../osm.js';
 // 新加坡摩天轮（Singapore Flyer）：轮径 150 m、总高 165 m、28 个空调轿厢——
 // 出处：新加坡摩天轮官网 singaporeflyer.com.sg/fact.html、Wikipedia、新加坡国家图书馆 Infopedia（三者一致；OSM 节点同为 165 m）。
 // 位置与轮面方向取自 OSM 中 attraction=big_wheel 的轮廓（tools/gen-sg.mjs）。
-// 示意（没有查到资料）：轿厢外形尺寸、辐条与 A 形支腿的具体构造、夜间灯光。
+// 主轴、双柱与四组拉索依据《The Arup Journal 2/2008》；地面锚点为示意。
 export function buildFlyer(scene, { c, ax }) {
   const R = 75, TOP = 165, HUB = TOP - R, N = 28;
   const g = new THREE.Group();
@@ -40,17 +40,27 @@ export function buildFlyer(scene, { c, ax }) {
   }
   cap.castShadow = true;
   g.add(cap);
-  // 轮毂与支腿
+  // 主轴跨过轮面，两端分别落在一根主柱上。
+  const spindleLength = 25.25, spindleRadius = 1.3, columnRadius = 1.425;
+  const columnOffset = spindleLength / 2 - columnRadius;
+  const columnHeight = HUB - spindleRadius / 2;
   g.add(new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 9, 16).rotateX(Math.PI / 2).translate(0, HUB, 0), steel));
-  for (const s of [-1, 1]) {
-    const from = new THREE.Vector3(0, HUB, -6), to = new THREE.Vector3(s * 34, 0, -16);
-    const len = from.distanceTo(to);
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.2, len, 10), steel);
-    leg.position.copy(from).add(to).multiplyScalar(0.5);
-    leg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize());
-    leg.castShadow = true;
-    g.add(leg);
+  const supports = [new THREE.CylinderGeometry(spindleRadius, spindleRadius, spindleLength, 16).rotateX(Math.PI / 2).translate(0, HUB, 0)];
+  const stays = [];
+  for (const side of [-1, 1]) {
+    supports.push(new THREE.CylinderGeometry(columnRadius, columnRadius, columnHeight, 16).translate(0, columnHeight / 2, side * columnOffset));
+    // 每侧两组斜拉索，每组六根，从轴端连到地面锚点。
+    for (const anchor of [-34, 34]) for (let cable = 0; cable < 6; cable++) {
+      const offset = (cable - 2.5) * 0.18;
+      stays.push(offset, HUB, side * columnOffset, anchor + offset, 0, side * 38);
+    }
   }
+  const support = new THREE.Mesh(mergeGeometries(supports), steel);
+  support.castShadow = true;
+  g.add(support);
+  const stayGeometry = new THREE.BufferGeometry();
+  stayGeometry.setAttribute('position', new THREE.Float32BufferAttribute(stays, 3));
+  g.add(new THREE.LineSegments(stayGeometry, new THREE.LineBasicMaterial({ color: '#aab2be', transparent: true, opacity: 0.45 })));
   scene.add(g);
   return g;
 }
