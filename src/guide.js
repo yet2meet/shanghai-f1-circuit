@@ -28,9 +28,7 @@ const buildSteps = () => [
   { target: '#minimap', title: () => t('赛道小地图', 'Track map'),
     body: () => t(`小地图标出了 ${circuit.turns} 个弯道和各看台的位置，点击看台圆点也能直接跳转。`, `The map shows all ${circuit.turns} turns and every stand — click a stand’s dot to jump there.`) },
   { target: '#pillSat', title: () => t('卫星图', 'Satellite view'),
-    body: () => circuit.preview
-      ? t('切换到卫星影像，可辅助核对地物位置；再次点击切回模型底图。', 'Switch to satellite imagery to help check locations; tap again to return to the model ground.')
-      : t('把底图换成真实卫星影像，赛道、看台和建筑都与影像一一对齐；再点一下切回模型底图。', 'Swap the ground for real satellite imagery — the track, stands and buildings line up with it exactly. Tap again to switch back.') },
+    body: () => t('切换到卫星影像查看赛道和场馆位置，再点一下切回模型底图。', 'Switch to satellite imagery to see where the track and venue features sit. Tap again to return to the model ground.') },
   { target: '#themeSeg', title: () => t('白天 / 黑夜', 'Day / night'),
     body: () => info.guide.night() },
   { target: '#langSeg', title: () => t('中文 / English', 'English / 中文'),

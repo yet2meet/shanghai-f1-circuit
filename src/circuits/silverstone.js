@@ -1,4 +1,4 @@
-// 银石 2025 英国站施工预览。路线与建筑轮廓采用地图数据。
+// 银石 2025 英国站场景。路线与建筑轮廓采用地图数据。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { t } from '../i18n.js';
@@ -240,14 +240,14 @@ export default {
   info: {
     facts: () => [[t('赛道长度', 'Track length'), '5.891 km'], [t('弯道', 'Corners'), t('18 个', '18')], [t('基准', 'Reference'), '2025 British GP']],
     notes: () => [
-      t('施工预览：中心线与弯号为近似。维修通道宽度、缓冲区及护墙为示意，标高尚未还原。', 'Work in progress: centreline and corner positions are approximate. Pit lane width, runoff and barriers are illustrative; elevation is not modelled.'),
+      t('中心线与弯号为近似。维修通道宽度、缓冲区及护墙为示意，赛道按平面建模。', 'The centreline and corner positions are approximate. Pit lane width, runoff and barriers are illustrative. The model uses a flat track surface.'),
       t('看台分区参考 2025 赛事图，座席和出入口为示意。Wing 屋顶、配套建筑轮廓和道路取自地图数据，车库按 FIA 2025 维修通道图分配。立面、工作区尺寸和未标宽度的道路仍待测量复核。', 'Grandstand sections follow the 2025 event map, with illustrative seating and entrances. The Wing roof, building footprints and roads use map data. Garage assignments follow the FIA 2025 pit lane plan. Facades, working area dimensions and untagged road widths remain approximate.'),
     ],
-    disclaimer: () => t('本网站为非官方爱好者作品。银石模型仍在施工，不能作为购票或现场通行依据。', 'This is an unofficial fan project. The Silverstone model is in progress and must not be used for ticketing or venue access.'),
+    disclaimer: () => t('本网站为非官方爱好者作品。购票及现场通行安排以赛事组织方发布的信息为准。', 'This is an unofficial fan project. Consult the event organiser for ticketing and venue access.'),
     trademarks: () => t('场馆及赛事名称归各自权利人所有。', 'Venue and event names belong to their respective owners.'),
     sources: () => t('中心线：bacinger/f1-circuits（MIT）；地图数据 © OpenStreetMap 贡献者（ODbL）；赛事参考：FIA 与银石赛道 2025 年官方图。', 'Centreline: bacinger/f1-circuits (MIT); map data © OpenStreetMap contributors (ODbL); event references: FIA and Silverstone 2025 maps.'),
     guide: {
-      welcome: () => t('银石场景正在施工，可先检查赛道和地物的位置。', 'Silverstone is under construction; use this preview to check the track and venue locations.'),
+      welcome: () => t('按 2025 年英国大奖赛布局探索银石的赛道、看台与场馆。', 'Explore the track, grandstands and venue at Silverstone in its 2025 British Grand Prix layout.'),
       night: () => t('可切换昼夜；夜间照明为示意。', 'Switch between day and night; night lighting is illustrative.'),
     },
   },

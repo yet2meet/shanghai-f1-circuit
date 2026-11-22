@@ -1,4 +1,4 @@
-// 按 OSM 多边形裁切看台阶梯与座位，座位、过道和高度为施工示意。
+// 按 OSM 多边形裁切看台阶梯与座位，座位、过道和高度为示意。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ROW_D, PITCH, seatGeometry, seatMatrix, seatColor } from '../../seatkit.js';

@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | **上海国际赛车场** · 5.451 km · 16 弯 | 主看台和各分区、维修楼、围场、内场卡丁车场，以及周边道路与地铁。默认白天。 | [打开上海](https://shanghai-f1-circuit.pages.dev/?c=sh) |
 | **新加坡滨海湾街道赛道** · 4.927 km · 19 弯 | 13 座可选座的看台、F1 维修楼和维修通道、城市道路与桥梁，以及滨海湾地标。默认夜晚。 | [打开新加坡](https://shanghai-f1-circuit.pages.dev/?c=sg) |
-| **银石赛道** · 5.891 km · 18 弯 | 2025 英国大奖赛布局预览，含 Landostand 等看台、Silverstone Wing、维修区、Stowe 内场和场内道路。默认白天。 | [打开银石](https://shanghai-f1-circuit.pages.dev/?c=gb) |
+| **银石赛道** · 5.891 km · 18 弯 | 采用 2025 英国大奖赛布局，含 Landostand 等看台、Silverstone Wing、维修区、Stowe 内场和场内道路。默认白天。 | [打开银石](https://shanghai-f1-circuit.pages.dev/?c=gb) |
 
 ## 浏览方式
 

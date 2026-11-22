@@ -8,7 +8,7 @@ Explore the Shanghai International Circuit, Marina Bay Street Circuit, and Silve
 | --- | --- | --- |
 | **Shanghai International Circuit** · 5.451 km · 16 turns | Grandstands and seating sections, the pit building, paddock, infield kart track, surrounding roads, and the metro line. Opens in daylight. | [Explore Shanghai](https://shanghai-f1-circuit.pages.dev/?c=sh) |
 | **Marina Bay Street Circuit** · 4.927 km · 19 turns | 13 grandstands with selectable seats, the F1 Pit Building and pit lane, city roads and bridges, and Marina Bay landmarks. Opens at night. | [Explore Singapore](https://shanghai-f1-circuit.pages.dev/?c=sg) |
-| **Silverstone Circuit** · 5.891 km · 18 turns | Preview of the 2025 British Grand Prix layout, including Landostand, the Silverstone Wing, pit lane, the Stowe infield, and venue roads. Opens in daylight. | [Explore Silverstone](https://shanghai-f1-circuit.pages.dev/?c=gb) |
+| **Silverstone Circuit** · 5.891 km · 18 turns | 2025 British Grand Prix layout, including Landostand, the Silverstone Wing, pit lane, the Stowe infield, and venue roads. Opens in daylight. | [Explore Silverstone](https://shanghai-f1-circuit.pages.dev/?c=gb) |
 
 ## Using the viewer
 
