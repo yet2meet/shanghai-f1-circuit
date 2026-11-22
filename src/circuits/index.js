@@ -21,7 +21,7 @@ export const CIRCUITS = [
       title: ['银石赛道 · Silverstone Circuit', 'Silverstone Circuit · Formula 1 British Grand Prix'],
       brandName: ['银石赛道', 'Silverstone Circuit'],
       brandShort: ['银石赛道', 'Silverstone'],
-      brandSub: ['5.891 km · 18 弯', '5.891 km · 18 turns'],
+      brandSub: ['Silverstone Circuit · 5.891 km · 18 弯', '银石赛道 · 5.891 km · 18 turns'],
       splashSub: ['FORMULA 1 · 英国大奖赛', 'FORMULA 1 · BRITISH GRAND PRIX'],
       listSub: ['座席为示意 · 票价未收录，请以官方售票信息为准', 'Schematic seating · prices not recorded; consult the official ticket site'],
       footnote: [
