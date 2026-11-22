@@ -5,7 +5,7 @@ import { asGround } from '../../osm.js';
 import { screenGeo } from '../../pitscreens.js';
 import { TEAMS } from '../../teams.js';
 import { groundDetail } from '../../textures.js';
-import { V, makePath, ribbon, rng, std, wall } from '../../util.js';
+import { V, canvasTex, makePath, ribbon, rng, std, wall } from '../../util.js';
 import { addRoadFill } from './night-lighting.js';
 
 // FIA 2026 Singapore GP Pit Lane V2, p. 2：编号与分配按入口到出口排列。
@@ -24,6 +24,25 @@ const WALL_WIDTH = 0.28;
 const WALL_HEIGHT = 1.15;
 const PLATFORM_WIDTH = 1.1;
 const FAST_WIDTH = 3.2;
+const PIT_HALF_WIDTH = 4.2;
+const EXIT_TAPER_SAMPLES = 9;
+
+// 入口分流标线替换主赛道左边线。两端以 OSM 的入口位置和 T19 后的主直道定位。
+export function sgPitEntryEdges(track) {
+  const start = track.nearest(-638, 308);
+  const end = track.nearest(-513, 246);
+  return (i) => start <= end ? i >= start && i <= end : i >= start || i <= end;
+}
+
+function exitJoin(track, pit) {
+  const [x, n] = pit.at(-1);
+  return track.nearest(x, -n);
+}
+
+export function sgPitExitKerbs(track, pit) {
+  const join = exitJoin(track, pit);
+  return (i) => i >= join - 4 && i <= join + EXIT_TAPER_SAMPLES;
+}
 
 /** 取赛车主直道靠维修区的路面边界，避免在同一位置使用第二套赛道宽度。 */
 function trackEdgeAt(track, z, nearX) {
@@ -42,15 +61,60 @@ function trackEdgeAt(track, z, nearX) {
   return edgeX;
 }
 
-function pitPath(pit) {
-  const points = pit.map(([x, n]) => V(x, n));
-  const samples = [points[0]];
+function pitPath(pit, track) {
+  // OSM 最末一点只是两路相接处。沿 T2 的左侧把汇入线延伸至路幅收尽。
+  const points = pit.slice(0, -1).map(([x, n]) => V(x, n));
+  const join = exitJoin(track, pit);
+  for (const [ahead, offset] of [[4, track.hw - 0.8], [EXIT_TAPER_SAMPLES, track.hw - PIT_HALF_WIDTH - 1.2]]) {
+    const i = (join + ahead) % track.N;
+    points.push(track.pts[i].clone().addScaledVector(track.nor[i], offset));
+  }
+  const controls = [points[0]];
   for (let i = 1; i < points.length; i++) {
     const start = points[i - 1], end = points[i];
-    const steps = Math.ceil(start.distanceTo(end) / 2);
-    for (let j = 1; j <= steps; j++) samples.push(start.clone().lerp(end, j / steps));
+    // 长直线插入控制点，避免曲线在两端被相邻弯道拉偏。
+    const steps = Math.ceil(start.distanceTo(end) / 23);
+    for (let j = 1; j <= steps; j++) controls.push(start.clone().lerp(end, j / steps));
   }
-  return makePath(samples);
+  const curve = new THREE.CatmullRomCurve3(controls, false, 'centripetal');
+  curve.arcLengthDivisions = 4096;
+  return makePath(curve.getSpacedPoints(Math.ceil(curve.getLength() / 0.85)));
+}
+
+function mainEdgeOffset(track, path, i, edge, nearest) {
+  const p = path.pts[i], n = path.nor[i];
+  let offset = -Infinity;
+  // 用通道横断面与主赛道路缘线段求交，保留准确的接缝位置。
+  for (let j = nearest - 6; j <= nearest + 6; j++) {
+    const a = edge[(j + track.N) % track.N], b = edge[(j + 1 + track.N) % track.N];
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const det = n.x * dz - n.z * dx;
+    if (Math.abs(det) < 0.0001) continue;
+    const ax = a.x - p.x, az = a.z - p.z;
+    const t = (ax * n.z - az * n.x) / det;
+    if (t < 0 || t > 1) continue;
+    const s = (ax * dz - az * dx) / det;
+    if (Math.abs(s) < Math.abs(offset)) offset = s;
+  }
+  return offset;
+}
+
+function alignAsphalt(geometry, track, path, mainSamples, uvMetres) {
+  const { position, uv } = geometry.attributes;
+  let wrap = 0;
+  for (let i = 0; i < path.N; i++) {
+    const k = mainSamples[i];
+    if (i && mainSamples[i - 1] - k > track.N / 2) wrap += track.total;
+    const p = track.pts[k], t = track.tan[k], n = track.nor[k];
+    for (const row of [2 * i, 2 * i + 1]) {
+      const x = position.getX(row) - p.x, z = position.getZ(row) - p.z;
+      const along = track.dist[k] + wrap + x * t.x + z * t.z;
+      const lateral = track.hw - x * n.x - z * n.z;
+      // 路缘处使用与主赛道相同的 UV，向通道外侧平滑展开纹理和夜间补光。
+      const v = lateral >= 0 ? lateral / (2 * track.hw) : Math.min(-lateral / 18, 0.7);
+      uv.setXY(row, along / uvMetres, v);
+    }
+  }
 }
 
 function buildPitCrew(people) {
@@ -83,10 +147,10 @@ function buildPitCrew(people) {
   return crew;
 }
 
-export function buildSGPitLane(scene, pit, track, pitb) {
+export function buildSGPitLane(scene, pit, track, pitb, asphalt, asphaltUV) {
   const group = new THREE.Group();
   group.name = 'sg-pit-lane';
-  const path = pitPath(pit);
+  const path = pitPath(pit, track);
   const garageEndZ = pitb.front.z - pitb.L / 2;
   const garageStartZ = pitb.front.z + pitb.L / 2;
   const wallStartZ = garageStartZ + 8;
@@ -96,25 +160,26 @@ export function buildSGPitLane(scene, pit, track, pitb) {
   const faceX = (z) => pitb.front.x - (z - pitb.front.z) * pitb.f.z / pitb.f.x;
   const { lerp, smoothstep } = THREE.MathUtils;
   const wallX = (z) => trackEdgeAt(track, z, faceX(z)) - 0.18;
-  const left = [], right = [];
+  const mainEdge = track.pts.map((p, i) => p.clone().addScaledVector(track.nor[i], track.hw));
+  const mainSamples = path.pts.map((p) => track.nearest(p.x, p.z));
+  const outer = [], inner = [], clipped = [], junction = [];
+  const west = new THREE.Vector3(-1, 0, 0);
   for (let i = 0; i < path.N; i++) {
     const { x, z } = path.pts[i];
-    // 进场和出场沿 OSM 折线；车库段按立面和主直道边缘定宽。
+    // 进出场先收为单车道，车库段仍按立面与维修墙定宽。
     const blend = smoothstep(z, wallEndZ - 26, wallEndZ) * (1 - smoothstep(z, wallStartZ, wallStartZ + 26));
-    if (blend > 0) {
-      path.nor[i].lerp(new THREE.Vector3(-1, 0, 0), blend).normalize();
-      left.push(lerp(6, x - faceX(z) + 0.25, blend));
-      right.push(lerp(-6, x - wallX(z), blend));
-    } else {
-      left.push(6);
-      right.push(-6);
-    }
+    path.nor[i].lerp(west, blend).normalize();
+    const a = lerp(PIT_HALF_WIDTH, x - faceX(z) + 0.25, blend);
+    const b = lerp(-PIT_HALF_WIDTH, x - wallX(z), blend);
+    const edgeOffset = i < start || i > end ? mainEdgeOffset(track, path, i, mainEdge, mainSamples[i]) : -Infinity;
+    outer.push(a);
+    inner.push(b);
+    junction.push(edgeOffset);
+    clipped.push(Math.min(a, Math.max(b, edgeOffset - 0.18)));
   }
 
-  const asphalt = groundDetail(std('#3b3d42', { roughness: 0.92 }, 0.55), 'asphalt', { size: 3, k: 0.7, mk: 0.12 });
   const fastSurface = groundDetail(std('#282c32', { roughness: 0.93 }, 0.55), 'asphalt', { size: 3, k: 0.7, mk: 0.12 });
   const uvMetres = 10;
-  addRoadFill(asphalt, path.total, uvMetres, 0.63);
   addRoadFill(fastSurface, path.total, uvMetres, 0.98);
   const paint = std('#f4f4f4', { roughness: 0.6 }, 0.8);
   const concrete = std('#92999f', { side: THREE.DoubleSide, roughness: 0.8 }, 0.4);
@@ -124,19 +189,69 @@ export function buildSGPitLane(scene, pit, track, pitb) {
     if (groundOrder !== null) asGround(mesh, groundOrder);
     else mesh.receiveShadow = true;
     group.add(mesh);
+    return mesh;
   };
-  const edge = (i) => right[i];
+  const edge = (i) => inner[i];
   const curb = (i) => edge(i) + WALL_WIDTH + PLATFORM_WIDTH;
   const split = (i) => curb(i) + FAST_WIDTH;
   const range = { from: start, to: end };
-  band((i) => left[i], edge, 0.12, asphalt, {}, -2);
-  band(split, curb, 0.123, fastSurface, range, -1.99);
-  band((i) => split(i) + 0.09, (i) => split(i) - 0.09, 0.14, paint, range, -1.9);
-  band((i) => curb(i) + 0.10, curb, 0.14, paint, range, -1.9);
-  // 白线保留在进出场，车库段的赛道侧边界改由实体维修墙界定。
-  for (const approach of [{ to: start }, { from: end }]) {
-    band((i) => left[i] - 0.15, (i) => left[i] - 0.31, 0.14, paint, approach, -1.9);
-    band((i) => edge(i) + 0.31, (i) => edge(i) + 0.15, 0.14, paint, approach, -1.9);
+  const road = band((i) => outer[i], (i) => clipped[i], 0.159, asphalt, { uv: asphaltUV }, -1.21);
+  road.name = 'sg-pit-asphalt';
+  alignAsphalt(road.geometry, track, path, mainSamples, asphaltUV);
+  band(split, curb, 0.16, fastSurface, range, -1.19).name = 'sg-pit-fast-lane';
+  band((i) => split(i) + 0.09, (i) => split(i) - 0.09, 0.18, paint, range, -1.04).name = 'sg-pit-fast-lane-line';
+  band((i) => curb(i) + 0.10, curb, 0.18, paint, range, -1.04);
+
+  const marks = [];
+  const mark = (offset, halfWidth, from, to, draw) => {
+    let first = -1;
+    for (let i = from; i <= to + 1; i++) {
+      if (i <= to && draw(i)) {
+        if (first < 0) first = i;
+      } else if (first >= 0) {
+        if (i - first >= 2) marks.push(ribbon(path, {
+          offA: (j) => offset(j) + halfWidth, offB: (j) => offset(j) - halfWidth, y: 0.202, from: first, to: i - 1,
+        }));
+        first = -1;
+      }
+    }
+  };
+  const outsideLine = (i) => outer[i] - 0.21;
+  mark(outsideLine, 0.11, 0, start, (i) => outer[i] - clipped[i] > 0.65);
+  mark(outsideLine, 0.11, end, path.N - 1, (i) => outer[i] - clipped[i] > 0.65);
+  // FIA 照片中的入口虚白线在分流后接实线。主赛道一侧的实线留给车库直道。
+  const entryEdges = sgPitEntryEdges(track);
+  const entryLength = path.dist[path.pts.findIndex((p) => p.x > -574)];
+  mark((i) => Math.max(inner[i] + 0.26, junction[i] - 0.56), 0.17, 0, start, (i) =>
+    (entryEdges(mainSamples[i]) || inner[i] > junction[i] + 0.1)
+    && (path.dist[i] >= entryLength || (path.dist[i] + 1) % 8 < 5));
+  mark((i) => inner[i] + 0.20, 0.12, end, path.N - 1, (i) => inner[i] - junction[i] > 0.36);
+  if (marks.length) {
+    const mesh = asGround(new THREE.Mesh(mergeGeometries(marks), paint), -0.96);
+    mesh.name = 'sg-pit-approach-markings';
+    group.add(mesh);
+  }
+
+  // T1 前及桥下的出口分隔带：红白边、黄色铺面与排水槽沿两侧路缘收窄。
+  const islandWidth = (i) => {
+    const z = path.pts[i].z;
+    if (!Number.isFinite(junction[i])) return 0;
+    return Math.max(0, Math.min(4.6, inner[i] - junction[i]))
+      * smoothstep(z, -279, -270) * (1 - smoothstep(z, -226, -216));
+  };
+  const islandStart = path.pts.findIndex((_, i) => i > end && islandWidth(i) > 0.03);
+  const islandEnd = path.pts.findLastIndex((_, i) => i > end && islandWidth(i) > 0.03);
+  if (islandStart >= 0 && islandStart < islandEnd) {
+    const island = { from: islandStart - 1, to: islandEnd + 1 };
+    const line = (fraction) => (i) => inner[i] - islandWidth(i) * fraction;
+    const kerbTex = canvasTex(96, 8, (ctx, width, height) => {
+      ctx.fillStyle = '#eae8e2'; ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = '#ba282b'; ctx.fillRect(0, 0, width / 2, height);
+    }, [1, 1]);
+    const kerb = std('#ffffff', { map: kerbTex, roughness: 0.78 }, 0.8);
+    band(line(0), line(1), 0.174, kerb, { ...island, uv: 4.4 }, -0.99).name = 'sg-pit-exit-island';
+    band(line(0.19), line(0.81), 0.179, std('#d7a021', { roughness: 0.82 }, 0.8), island, -0.98);
+    band(line(0.475), line(0.525), 0.18, std('#383939', { roughness: 0.96 }, 0.64), island, -0.97);
   }
 
   band(curb, edge, 0.23, platform, range);
@@ -145,9 +260,10 @@ export function buildSGPitLane(scene, pit, track, pitb) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);
+    return mesh;
   };
   addWall(curb, 0.12, 0.11, platform);
-  addWall(edge, 0.12, WALL_HEIGHT - 0.12, concrete);
+  addWall(edge, 0.12, WALL_HEIGHT - 0.12, concrete).name = 'sg-pit-wall';
   addWall((i) => edge(i) + WALL_WIDTH, 0.23, WALL_HEIGHT - 0.23, concrete);
   band((i) => edge(i) + WALL_WIDTH, edge, WALL_HEIGHT, concrete, range);
 
@@ -182,15 +298,15 @@ export function buildSGPitLane(scene, pit, track, pitb) {
     const stopX = stopLimit - 0.22 - stopWidth / 2;
     const strip = 0.11;
     const stop = new THREE.Mesh(mergeGeometries([
-      box(stopWidth, 0.01, strip, stopX, 0.15, z - stopLength / 2),
-      box(strip, 0.01, stopLength, stopX + stopWidth / 2, 0.15, z),
-      box(strip, 0.01, stopLength, stopX - stopWidth / 2, 0.15, z),
+      box(stopWidth, 0.01, strip, stopX, 0.18, z - stopLength / 2),
+      box(strip, 0.01, stopLength, stopX + stopWidth / 2, 0.18, z),
+      box(strip, 0.01, stopLength, stopX - stopWidth / 2, 0.18, z),
     ]), paint);
     stop.name = team.id;
     stop.receiveShadow = true;
     const guide = new THREE.Mesh(mergeGeometries([
-      box(0.15, 0.01, 4.8, stopX, 0.15, z),
-      box(stopWidth * 0.54, 0.01, 0.15, stopX, 0.151, z - 1.82),
+      box(0.15, 0.01, 4.8, stopX, 0.18, z),
+      box(stopWidth * 0.54, 0.01, 0.15, stopX, 0.181, z - 1.82),
     ]), std(team.color, { roughness: 0.6 }, 0.65));
     stop.add(guide);
     stops.add(stop);

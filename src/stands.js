@@ -10,6 +10,7 @@ import { STANDS, TURNS, TRACK_POINTS } from './data.js';
 import { OSM_STANDS } from './osm-data.js';
 import { V, rng, std, floodlit, lampMat, extrudeProfile } from './util.js';
 import { groundDetail } from './textures.js';
+import { VOM_W, vomRows, addVomitory, buildVomitoryMeshes } from './stand-entrance.js';
 
 const BLOCK = 28, AISLE = 2; // 每个分区 28 座 + 2 个座位宽的过道
 const UP = new THREE.Vector3(0, 1, 0);
@@ -268,33 +269,6 @@ function buildArcPart(spec, arc, ctx) {
   const f = new THREE.Vector3(-Fm.bx, 0, Fm.bn);
   partOf.push({ f, rotY: Fm.rotY, front: at(uOf(Ltot / 2), 0, 0), L: Ltot, D, H, G: W, pick: { arc: true, from: seatStart, to: seats.length } });
   return g;
-}
-
-/** 出入口（通道口）所在的排：约在座位区中段偏上，占 3 排（照片：每条过道一个） */
-const VOM_W = 2.8;
-function vomRows(count) {
-  const set = new Set();
-  if (count < 9) return set;
-  const r0 = Math.round(count * 0.5);
-  for (let r = r0; r < r0 + 3; r++) set.add(r);
-  return set;
-}
-/** 出入口：过道中段一个白色混凝土框，正面一块深色门洞（通往看台下方的通道），顶上一圈栏杆 */
-function addVomitory(ctx, origin, rotY, rows, ti, vom) {
-  if (!vom.size) return;
-  const rs = [...vom], ra = rows[ti.first + rs[0]], rb = rows[ti.first + rs[rs.length - 1]];
-  const z0 = ra.z - ROW_D * 0.5, z1 = rb.z + ROW_D * 0.5, top = rb.y + 1.1;
-  const q = new THREE.Quaternion().setFromAxisAngle(UP, rotY), one = new THREE.Vector3(1, 1, 1);
-  const place = (lx, ly, lz) => new THREE.Vector3(lx, ly, lz).applyQuaternion(q).add(origin);
-  const box = (w, h, d, lx, ly, lz) => ctx.vomBox.push(new THREE.Matrix4().compose(place(lx, ly, lz), q, new THREE.Vector3(w, h, d)));
-  const yb = ra.y - 0.2;
-  // 三面矮墙（两侧 + 后侧），前面敞开为门洞
-  box(0.25, top - yb, z1 - z0, -VOM_W / 2, (top + yb) / 2, (z0 + z1) / 2);
-  box(0.25, top - yb, z1 - z0, VOM_W / 2, (top + yb) / 2, (z0 + z1) / 2);
-  box(VOM_W + 0.25, top - yb, 0.25, 0, (top + yb) / 2, z1);
-  // 门洞：向下通入看台内部的深色洞口
-  ctx.vomHole.push(new THREE.Matrix4().compose(place(0, (rb.y + 0.3 + yb) / 2, z0 + 0.05), q, new THREE.Vector3(VOM_W - 0.3, rb.y + 0.3 - yb, 1)));
-  ctx.vomFloor.push(new THREE.Matrix4().compose(place(0, rb.y + 0.3, (z0 + z1) / 2), q, new THREE.Vector3(VOM_W - 0.3, 1, z1 - z0 - 0.3)));
 }
 
 /** 生成每一层的排：返回 rows[{z,y,tier,r}] 与剖面 */
@@ -619,10 +593,8 @@ function buildSeatStand(spec, mats, seatGeo, common) {
   else for (const part of parts) g.add(spec.curve && isArc(part) ? buildArcPart(spec, arcFront(part), ctx) : buildSeatPart(spec, part, ctx.partOf.length, ctx));
   g.add(ctx.rails.build());
   // 出入口（实例化）
-  const inst = (geo, mat, list) => { if (!list.length) return; const im = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((m, i) => im.setMatrixAt(i, m)); im.castShadow = im.receiveShadow = true; g.add(im); ctx.vomMeshes = [...(ctx.vomMeshes || []), im]; };
-  inst(new THREE.BoxGeometry(1, 1, 1), mats.white, ctx.vomBox);
-  inst(new THREE.PlaneGeometry(1, 1).rotateY(Math.PI), mats.vomDark, ctx.vomHole);
-  inst(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), mats.vomDark, ctx.vomFloor);
+  const vomMeshes = buildVomitoryMeshes(ctx, mats.white, mats.vomDark);
+  if (vomMeshes.length) g.add(...vomMeshes);
   ctx.extra.forEach((m) => g.add(m));
   // 栏杆玻璃面板（合并成一个网格）
   const panels = ctx.glassPanels.map(({ G, L, y, z }) => {
@@ -671,7 +643,7 @@ function buildSeatStand(spec, mats, seatGeo, common) {
     b.f = ctx.partOf[b.part].f;
   });
 
-  mergeStatic(g, new Set([mesh, carpet, nose, ...(ctx.vomMeshes || [])]));
+  mergeStatic(g, new Set([mesh, carpet, nose, ...vomMeshes]));
   const s = { g, mesh, seats, base: new Float32Array(base), rot: new Float32Array(rot), blocks, parts: ctx.partOf, carpet };
   s.pickSeat = (ray) => pickSeat(s, ray);
   return s;

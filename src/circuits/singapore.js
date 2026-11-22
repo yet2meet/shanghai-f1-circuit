@@ -12,7 +12,7 @@ import { TRACK_POINTS, TRUE_NORTH, TURNS, PIT, VENUE, CENTER, FLYER, PITB, MERLI
 import { buildFlyer, buildMerlion, buildStartGrid, buildSkyParkDetail, buildSupertrees } from './sg/landmarks.js';
 import { buildEsplanadeRoof, esplanadeFacade } from './sg/esplanade.js';
 import { buildEsplanadeBridge, esplanadeBridgeTreeClearance } from './sg/esplanade-bridge.js';
-import { buildSGPitLane, SG_GARAGE_SLOTS } from './sg/pitlane.js';
+import { buildSGPitLane, sgPitEntryEdges, sgPitExitKerbs, SG_GARAGE_SLOTS } from './sg/pitlane.js';
 import { addBayGlints, addRoadFill } from './sg/night-lighting.js';
 import { buildPitBuilding } from '../pitbuilding.js';
 import { seatColor, seatMatrix, seatWorld, seatFacing, SELECTED_COLOR } from '../seatkit.js';
@@ -81,9 +81,16 @@ export default {
   async build(scene, { renderer, step, tr, brand }) {
     await step(0.3, tr('铺设赛道', 'Laying the track'));
     // 赛道半宽取 6.5 m（路宽约 13 m，示意；街道赛护墙紧贴路面）
+    let asphalt, asphaltUV, entryEdges, exitKerbs;
     const track = buildTrack(scene, {
       points: TRACK_POINTS, pit: PIT, hw: 6.5, runoff: false, ads: ADS, kerbCurv: 0.006, pitSide: 'left',
-      finishAsphalt: (material, path, uvMetres) => addRoadFill(material, path.total, uvMetres, 1.60),
+      finishAsphalt: (material, path, uvMetres) => {
+        asphalt = material;
+        asphaltUV = uvMetres;
+        addRoadFill(material, path.total, uvMetres, 1.60);
+      },
+      skipEdgeLine: (i, side, track) => side === 1 && (entryEdges ??= sgPitEntryEdges(track))(i),
+      skipPitSideKerb: (i, track) => (exitKerbs ??= sgPitExitKerbs(track, PIT))(i),
     });
     buildStartGrid(scene, track, TURNS); // 起终点线与发车格：位置依据官方 Circuit Park Map，近似
     // F1 Pit Building（P 房）：位置与轮廓取自 OSM；建模与上海维修楼同一套——车库、车队名称牌与标志、赛车、技师、工程师控制台、遥测屏
@@ -93,7 +100,7 @@ export default {
       garageSlots: SG_GARAGE_SLOTS, showApron: false, podium: false,
       band: ['FORMULA 1', '新加坡大奖赛', 'SINGAPORE GRAND PRIX', '滨海湾街道赛道', 'MARINA BAY 2026', 'FORMULA 1'], tvLive: 'LIVE · MARINA BAY',
     });
-    buildSGPitLane(scene, PIT, track, pitb);
+    buildSGPitLane(scene, PIT, track, pitb, asphalt, asphaltUV);
     await step(0.55, tr('加载周边道路、水系与建筑', 'Loading roads, water and buildings'));
     const artsFacade = esplanadeFacade();
     const { deckUndersideAt } = buildOSM(scene, { OSM_BUILDINGS, OSM_AREAS, OSM_LINES }, {

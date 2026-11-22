@@ -15,6 +15,8 @@ export const HW = 7.5; // 上海赛道半宽（真实路面宽约 13–15 m）�
  *   ads      护墙标识带：[[背景色, 文字色, 文字], …]
  *   kerbCurv 弯道路肩的曲率阈值
  *   finishAsphalt(material, path, uvMetres) 材质生成后的赛道专用设置
+ *   skipEdgeLine(i, side, track) 按采样点和侧别省略赛道白边线
+ *   skipPitSideKerb(i, track) 额外清除维修通道一侧的路肩
  */
 export function buildTrack(scene, cfg) {
   const { points: TRACK_POINTS, pit: OSM_PIT, hw = 7.5, runoff = true, ads, kerbCurv = 0.005, pitSide = 'right' } = cfg;
@@ -96,8 +98,8 @@ export function buildTrack(scene, cfg) {
 
   // 修剪草坪带（夜间被灯光照亮）
   const vergeTex = canvasTex(256, 64, (c, w, h) => {
-    c.fillStyle = '#86ba69'; c.fillRect(0, 0, w, h);
-    c.fillStyle = '#92c375'; c.fillRect(0, 0, w / 2, h);
+    c.fillStyle = cfg.vergeColor || '#86ba69'; c.fillRect(0, 0, w, h);
+    c.fillStyle = cfg.vergeColor || '#92c375'; c.fillRect(0, 0, w / 2, h);
   }, [1, 1]);
   const verge = new THREE.Mesh(
     ribbon(path, { offA: (i) => HW + 13 + gwL[i], offB: (i) => -(HW + 13 + gwR[i]), y: 0.05, uv: 24 }),
@@ -135,8 +137,22 @@ export function buildTrack(scene, cfg) {
 
   // 白色边线
   const lineMat = std('#f4f4f4', { roughness: 0.6 }, 0.9);
-  g.add(asGround(new THREE.Mesh(ribbon(path, { offA: HW - 0.35, offB: HW - 0.8, y: 0.2 }), lineMat), -1.05));
-  g.add(asGround(new THREE.Mesh(ribbon(path, { offA: -(HW - 0.8), offB: -(HW - 0.35), y: 0.2 }), lineMat), -1.05));
+  for (const side of [1, -1]) {
+    const offsets = side > 0 ? { offA: HW - 0.35, offB: HW - 0.8 } : { offA: -(HW - 0.8), offB: -(HW - 0.35) };
+    if (!cfg.skipEdgeLine) {
+      g.add(asGround(new THREE.Mesh(ribbon(path, { ...offsets, y: 0.2 }), lineMat), -1.05));
+      continue;
+    }
+    let start = -1;
+    for (let i = 0; i <= N + 1; i++) {
+      const draw = i <= N && !cfg.skipEdgeLine(i % N, side, track);
+      if (draw && start < 0) start = i;
+      if (!draw && start >= 0) {
+        if (i - start > 1) g.add(asGround(new THREE.Mesh(ribbon(path, { ...offsets, y: 0.2, from: start, to: i - 1 }), lineMat), -1.05));
+        start = -1;
+      }
+    }
+  }
 
   // 红白路肩。2026 年赛道专项升级“降低路肩高度”（适配 FIA ECAT），这里贴近路面，只比沥青高约 2 cm；
   // 维修区出口并线段的内侧不画路肩，只留白色分隔线。
@@ -163,10 +179,11 @@ export function buildTrack(scene, cfg) {
         continue;
       }
       // 维修区一侧：跳过与维修通道重叠的部分
+      const skip = (i) => kerbPit[i % N] || cfg.skipPitSideKerb?.(i % N, track);
       for (let s0 = a; s0 <= b; s0++) {
-        if (kerbPit[s0 % N]) continue;
+        if (skip(s0)) continue;
         let s1 = s0;
-        while (s1 < b && !kerbPit[(s1 + 1) % N]) s1++;
+        while (s1 < b && !skip(s1 + 1)) s1++;
         if (s1 > s0) g.add(asGround(new THREE.Mesh(ribbon(path, { ...offs, y: 0.18, uv: 5, from: s0, to: s1 }), kerbMat), -1.0));
         s0 = s1;
       }

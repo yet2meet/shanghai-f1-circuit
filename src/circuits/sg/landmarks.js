@@ -156,10 +156,10 @@ export function buildSupertrees(scene, groveFlat) {
  * 左右交错、前后相隔 8 m、杆位在线后 8 m，杆位在哪一侧官方资料没有写，取 1 号左弯的内侧（左）示意。
  * 弯道里的车位（曲率大处）不画，所以实际画出的车位数可能少于 22。
  */
-export function buildStartGrid(scene, track, turns, frac = 0.28) {
+export function buildStartGrid(scene, track, turns, frac = 0.28, { startTurn = 19, slots: slotCount = 22 } = {}) {
   const N = track.N, mPer = track.total / N, hw = track.hw;
   const idx = (n) => { const [, x, y] = turns.find((t) => t[0] === n); return track.nearest(x, -y); };
-  const a = idx(19), b = idx(1);
+  const a = idx(startTurn), b = idx(1);
   const iL = (a + Math.round(((b - a + N) % N) * frac)) % N;
   const up = new THREE.Vector3(0, 1, 0);
   const basis = (k, lateral, y) => {
@@ -174,7 +174,7 @@ export function buildStartGrid(scene, track, turns, frac = 0.28) {
   // 发车格：白色外框
   const box = canvasTexLocal(64, 160, (c, w, h) => { c.clearRect(0, 0, w, h); c.strokeStyle = '#ffffff'; c.lineWidth = 6; c.strokeRect(5, 5, w - 10, h - 10); c.fillStyle = '#ffffff'; c.fillRect(5, h * 0.82, w - 10, 6); });
   const slots = [];
-  for (let k = 0; k < 22; k++) {
+  for (let k = 0; k < slotCount; k++) {
     const at = (iL - Math.round((8 + 8 * k) / mPer) + N) % N;
     if (Math.abs(track.curv[at]) > 0.004) continue;
     slots.push(basis(at, (k % 2 === 0 ? 1 : -1) * 2.6, 0.212));

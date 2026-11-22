@@ -52,7 +52,7 @@ function mainAxis(p) {
 }
 
 /** 折线条带：p 为 [x,n,...]，w 宽，yFn(累计距离, 总长) 给出高度 */
-function strip(p, w, yFn = () => 0, off = 0) {
+function strip(p, w, yFn = () => 0, off = 0, roadMiter = false) {
   const N = p.length / 2;
   if (N < 2) return null;
   const dist = [0];
@@ -67,8 +67,18 @@ function strip(p, w, yFn = () => 0, off = 0) {
     let nx = -tn, nn = tx, k = 1;
     if (i > 0 && i < N - 1) {
       const ax = p[i * 2] - p[i * 2 - 2], an = p[i * 2 + 1] - p[i * 2 - 1], al = Math.hypot(ax, an) || 1;
-      const cos = (ax / al) * tx + (an / al) * tn;
-      k = 1 / Math.max(0.5, Math.sqrt((1 + cos) / 2));
+      if (roadMiter) {
+        const bx = p[b * 2] - p[i * 2], bn = p[b * 2 + 1] - p[i * 2 + 1], bl = Math.hypot(bx, bn) || 1;
+        const dx = ax / al + bx / bl, dn = an / al + bn / bl;
+        const dl = Math.hypot(dx, dn);
+        if (dl > 0.15) {
+          nx = -dn / dl; nn = dx / dl;
+          k = 1 / Math.max(0.67, (dx * ax + dn * an) / (dl * al));
+        }
+      } else {
+        const cos = (ax / al) * tx + (an / al) * tn;
+        k = 1 / Math.max(0.5, Math.sqrt((1 + cos) / 2));
+      }
     }
     const y = yFn(dist[i], total);
     const x = p[i * 2], n = p[i * 2 + 1];
@@ -376,6 +386,7 @@ export function buildOSM(scene, data, opts = {}) {
     park: ['#97c47c', -7], grass: ['#9cc782', -7], forest: ['#7aae66', -7], flowerbed: ['#92c377', -6], pitch: ['#86bd6c', -6], trackfield: ['#c9876e', -6],
     parking: ['#c6cad0', -5], plaza: ['#dcdfe3', -5], paved: ['#cfd3d8', -5], gravel: ['#d9bf88', -5], sand: ['#e6cf9c', -5], water: ['#5fa8d2', -4],
   };
+  for (const [kind, color] of Object.entries(opts.areaColors || {})) if (AREA[kind]) AREA[kind] = [color, AREA[kind][1]];
   const byKind = {};
   for (const a of OSM_AREAS) {
     if (!AREA[a.k]) continue;
@@ -392,7 +403,7 @@ export function buildOSM(scene, data, opts = {}) {
         if (inside(x, nn, a.p) && !a.q.some((h) => inside(x, nn, h))) { treeSpots.push(x, nn, a.k === 'forest' ? 1.15 : 1); k++; }
       }
     }
-    if (a.k === 'parking') { // 停车场：只停少量车（约 2.5% 的车位），点缀而不显拥挤
+    if (a.k === 'parking' && opts.parkingCars !== false) { // 停车场：只停少量车（约 2.5% 的车位），点缀而不显拥挤
       // 车位：沿停车场主方向排布，2.5 m × 5 m，每两排之间留 6 m 车道
       const ang = mainAxis(a.p), ca = Math.cos(ang), sa = Math.sin(ang);
       const [x0, n0, x1, n1] = bboxOf(a.p);
@@ -429,7 +440,7 @@ export function buildOSM(scene, data, opts = {}) {
     track: '#c2c0b9', footway: '#c9ccd1', path: '#c8c8c3', steps: '#c4c7cc', pedestrian: '#d3d5d9', cycleway: '#c2c5ca',
   };
   const ground = {}, raised = {}, connectedDecks = {};
-  const dash = [], edge = [];
+  const dash = [], edge = [], deckBanks = [];
   const parapets = [], piers = [], fascia = [], deckMarkings = [], deckDash = [], railCaps = [];
   const hasDecks = OSM_LINES.some((line) => line.deck);
   const footway = /footway|path|steps|pedestrian|cycleway|track/;
@@ -502,25 +513,86 @@ export function buildOSM(scene, data, opts = {}) {
     return (!opts.roadSupportClear || opts.roadSupportClear(x, n)) && !roadOccupied(x, n, 1.45, own) &&
       !OSM_BUILDINGS.some((b) => b.m < 2 && inside(x, n, b.p));
   }
+  function bridgeBanks(surface, thickness) {
+    const points = surface.attributes.position;
+    const vertices = [], indices = [];
+    let previous;
+    for (let i = 0; i < points.count; i += 2) {
+      const left = new THREE.Vector3().fromBufferAttribute(points, i);
+      const right = new THREE.Vector3().fromBufferAttribute(points, i + 1);
+      const height = Math.max(0, left.y - thickness + 0.02);
+      left.y = right.y = height;
+      const side = left.clone().sub(right).normalize().multiplyScalar(height * 1.25 + 0.3);
+      const toeL = left.clone().add(side).setY(0.02), toeR = right.clone().sub(side).setY(0.02);
+      if (!opts.roadSupportClear(toeL.x, -toeL.z) || !opts.roadSupportClear(toeR.x, -toeR.z)) {
+        if (previous !== undefined) indices.push(previous, previous + 1, previous + 2, previous, previous + 2, previous + 3);
+        previous = undefined;
+        continue;
+      }
+      const start = vertices.length / 3;
+      for (const vertex of [toeL, left, right, toeR]) vertices.push(vertex.x, vertex.y, vertex.z);
+      if (previous !== undefined) for (let j = 0; j < 3; j++) {
+        indices.push(previous + j, previous + j + 1, start + j, previous + j + 1, start + j + 1, start + j);
+      } else if (i && height > 0) {
+        indices.push(start, start + 2, start + 1, start, start + 3, start + 2);
+      }
+      previous = start;
+    }
+    if (!indices.length) return;
+    const bank = new THREE.BufferGeometry().setIndex(indices).setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    bank.computeVertexNormals();
+    deckBanks.push(bank);
+  }
   const railBed = [], rails = [], viaduct = [], viaductWalls = [];
   const waterLines = [], raceways = [], raceLines = [], fences = [];
+  const detailedRoads = opts.roadSurfaces;
+  const surfaceKey = (kind, surface) => detailedRoads && /^(gravel|fine_gravel|compacted|unpaved|ground|dirt|grass)$/.test(surface)
+    ? 'loose-surface' : roadKey(kind);
+  const mergingRaceways = OSM_LINES.filter(line => line.mergeEdges).map(line => ({ line, bounds: bboxOf(line.p) }));
+  function raceEdge(line, side) {
+    const p = line.p.slice(0, 2);
+    for (let i = 2; i < line.p.length; i += 2) {
+      const x = line.p[i - 2], n = line.p[i - 1], dx = line.p[i] - x, dn = line.p[i + 1] - n;
+      const count = Math.ceil(Math.hypot(dx, dn) / 1.25);
+      for (let j = 1; j <= count; j++) p.push(x + dx * j / count, n + dn * j / count);
+    }
+    const edge = strip(p, 0.28, () => 0.083, () => side * (line.w / 2 - 0.38), true);
+    if (!edge) return null;
+    const pos = edge.attributes.position;
+    const hide = (x, n) => mergingRaceways.some(({ line: other, bounds: [left, bottom, right, top] }) => {
+      const margin = other.w / 2 - 0.2;
+      if (line === other || x < left - margin || x > right + margin || n < bottom - margin || n > top + margin) return false;
+      for (let i = 2; i < other.p.length; i += 2) if (segmentProjection(x, n, other.p, i).offset < margin) return true;
+      return false;
+    });
+    const indices = [];
+    for (let i = 2; i < pos.count; i += 2) {
+      const x = (pos.getX(i - 2) + pos.getX(i - 1) + pos.getX(i) + pos.getX(i + 1)) / 4;
+      const n = -(pos.getZ(i - 2) + pos.getZ(i - 1) + pos.getZ(i) + pos.getZ(i + 1)) / 4;
+      if (!hide(x, n)) indices.push(i - 2, i - 1, i, i - 1, i + 1, i);
+    }
+    edge.setIndex(indices);
+    return edge;
+  }
   let oi = 0;
   for (const l of OSM_LINES) {
     const p = l.p;
     if (l.k.startsWith('road:')) {
       const cls = l.k.slice(5);
-      if (hasDecks) recordJoins(l, roadKey(cls));
+      if (hasDecks) recordJoins(l, l.deck ? roadKey(cls) : surfaceKey(cls, l.surface));
       let yFn = () => 0, total = 0;
       for (let i = 2; i < p.length; i += 2) total += Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]);
       if (l.deck) {
         const { points, widths, atY } = deckPaths.get(l);
         const key = roadKey(cls);
         const thickness = deckThickness(l.k);
-        const g = strip(points, (i) => widths[i], atY);
+        const carriageway = l.deck.carriageway;
+        const g = strip(points, (i) => widths[i], atY, 0, detailedRoads);
         (connectedDecks[key] ||= []).push(g);
         fascia.push(deckSides(g, thickness));
+        if (carriageway && opts.roadSupportClear) bridgeBanks(g, thickness);
         for (const sign of [-1, 1]) {
-          const rail = strip(points, 0.17, (d, t) => atY(d) + 0.68 * Math.min(1, d / 7, (t - d) / 7), (i) => sign * (widths[i] / 2 - 0.14));
+          const rail = strip(points, 0.17, (d, t) => atY(d) + 0.68 * Math.min(1, d / 7, (t - d) / 7), (i) => sign * (widths[i] / 2 - 0.14), detailedRoads);
           const pos = rail.attributes.position.array;
           const keep = [];
           let distance = 0;
@@ -538,9 +610,12 @@ export function buildOSM(scene, data, opts = {}) {
             railCaps.push(rail);
           }
           // 同一路幅的标线和桥面共用采样与斜接。
-          if (key === 'drive' && l.w > 10) deckMarkings.push(strip(points, 0.15, (d) => atY(d) + 0.014, (i) => sign * (widths[i] / 2 - 0.52)));
+          if (carriageway || (key === 'drive' && l.w > 10)) {
+            const shoulder = i => carriageway ? Math.min(widths[i], carriageway) / 2 - 0.27 : widths[i] / 2 - 0.52;
+            deckMarkings.push(strip(points, 0.15, d => atY(d) + 0.014, i => sign * shoulder(i), detailedRoads));
+          }
         }
-        if (key === 'drive' && l.w > 9) deckDash.push(strip(points, 0.15, (d) => atY(d) + 0.014));
+        if (carriageway || (key === 'drive' && l.w > 9)) deckDash.push(strip(points, 0.15, d => atY(d) + 0.014, 0, detailedRoads));
         if (l.deck.height > 2.5) along(points, 36, (x, n, a, d) => {
           const h = atY(d) - thickness;
           if (h > 1.5 && supportClear(x, n, l)) piers.push(x, n, h);
@@ -561,11 +636,11 @@ export function buildOSM(scene, data, opts = {}) {
         if (l.w > 9) { const d = strip(p, 0.25, (dd) => yFn(dd) + 0.03); if (d) dash.push(d); }
         continue;
       }
-      const g = strip(p, l.w, () => 0.04);
+      const g = strip(p, l.w, () => 0.04, 0, detailedRoads);
       if (!g) continue;
-      (ground[roadKey(cls)] ||= []).push(g);
-      if (l.w > 9) { const d = strip(p, 0.25, () => 0.06); if (d) dash.push(d); }
-      if (l.w > 15) for (const s of [1, -1]) { const e = strip(p, 0.2, () => 0.06, s * (l.w / 2 - 0.8)); if (e) edge.push(e); }
+      (ground[surfaceKey(cls, l.surface)] ||= []).push(g);
+      if (l.w > 9) { const d = strip(p, 0.25, () => 0.06, 0, detailedRoads); if (d) dash.push(d); }
+      if (l.w > 15) for (const s of [1, -1]) { const e = strip(p, 0.2, () => 0.06, detailedRoads ? () => s * (l.w / 2 - 0.8) : s * (l.w / 2 - 0.8), detailedRoads); if (e) edge.push(e); }
     } else if (l.k === 'water') {
       const g = strip(p, l.w, () => 0.03); if (g) waterLines.push(g);
     } else if (l.k === 'rail') {
@@ -579,8 +654,11 @@ export function buildOSM(scene, data, opts = {}) {
         for (const c of [-2.2, 2.2]) for (const r of [-0.72, 0.72]) { const g2 = strip(p, 0.12, () => 0.2, c + r); if (g2) rails.push(g2); }
       }
     } else if (l.k === 'raceway') {
-      const g = strip(p, l.w, () => 0.06); if (g) raceways.push(g);
-      for (const s of [1, -1]) { const e = strip(p, 0.35, () => 0.08, s * (l.w / 2 - 0.4)); if (e) raceLines.push(e); }
+      const g = strip(p, l.w, () => 0.06, 0, detailedRoads); if (g) raceways.push(g);
+      for (const s of [1, -1]) {
+        const e = l.mergeEdges ? raceEdge(l, s) : strip(p, 0.35, () => 0.08, s * (l.w / 2 - 0.4));
+        if (e) raceLines.push(e);
+      }
     } else if (l.k === 'trees') {
       along(p, 7, (x, n) => treeSpots.push(x, n, 1.1));
     } else if (l.k === 'fence') {
@@ -601,7 +679,8 @@ export function buildOSM(scene, data, opts = {}) {
   };
   add(waterLines, waterMat, -4);
   const roadSurface = (key) => {
-    const color = key === 'drive' ? '#747983' : '#a7abb0';
+    if (key === 'loose-surface') return groundDetail(groundMat('#a9a199', 0.15), 'gravel', { size: 3.5, k: 0.62, mk: 0.12 });
+    const color = key === 'drive' ? (opts.roadSurfaces ? '#626970' : '#747983') : '#a7abb0';
     const material = std(color, { roughness: 0.95 }, key === 'drive' ? 0.27 : 0.3);
     return groundDetail(material, 'asphalt', { size: 3, k: 0.28, mk: 0.06 });
   };
@@ -616,11 +695,14 @@ export function buildOSM(scene, data, opts = {}) {
   add(dash.filter((g) => g.attributes.position.array[1] < 1), hasDecks ? roadDash() : dashMat, -2.5);
   add(edge, groundMat('#f2f2f2', 0.6), -2.5);
   add(railBed, groundMat('#8b8378', 0.2), -3);
-  add(raceways, groundMat('#3b3d42', 0.55), -2.2);
+  const auxiliaryAsphalt = groundMat('#3b3d42', 0.55);
+  if (opts.roadSurfaces) groundDetail(auxiliaryAsphalt, 'asphalt', { size: 3, k: 0.52, mk: 0.10 });
+  add(raceways, auxiliaryAsphalt, -2.2);
   add(raceLines, groundMat('#f4f4f4', 0.8), -2.1);
   // 高架与桥梁
   const concrete = std('#c9ccd0', { roughness: 0.85, side: THREE.DoubleSide }, 0.35);
   for (const [key, list] of Object.entries(connectedDecks)) add(list, roadSurface(key), -3, false).name = `osm-road-deck-${key}`;
+  add(deckBanks, groundDetail(std('#d3d6da', { roughness: 1, side: THREE.DoubleSide }, 0.18), 'grass', { size: 3.5 }), -3, false);
   add(fascia, concrete, -3, false);
   add(railCaps, concrete, 0, false);
   add(deckMarkings, std('#e3e6e7', { roughness: 0.85 }, 0.36), -2.5, false);
@@ -792,7 +874,7 @@ export function buildOSM(scene, data, opts = {}) {
       put(b.a === 'kart' ? MAT.kartRoof : MAT.venueRoof, caps);
       put(b.g === 'glass' || b.a === 'kart' ? MAT.glassBox : MAT.service, wallUV(S, b.m));
       // 屋顶设备：较大的楼放几台空调外机 / 风机
-      if (A > 300) {
+      if (A > 300 && opts.roofEquipment !== false) {
         const [x0, n0, x1, n1] = bboxOf(b.p);
         for (let k = 0, tries = 0; k < Math.min(6, Math.round(A / 250)) && tries < 40; tries++) {
           const x = x0 + rand() * (x1 - x0), n = n0 + rand() * (n1 - n0);

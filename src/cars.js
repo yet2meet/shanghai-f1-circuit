@@ -3,10 +3,10 @@ import { f1CarGeometry, carMaterials } from './f1car.js';
 import { TEAMS } from './teams.js';
 import { floodlit } from './util.js';
 
-export function buildCars(scene, track) {
+export function buildCars(scene, track, teams = TEAMS) {
   // 11 辆车（每支车队 1 辆，画面不显拥挤）：每种材质一个实例化网格，涂装颜色逐车设置
   const geo = f1CarGeometry();
-  const n = TEAMS.length;
+  const n = teams.length;
   const base = carMaterials({ livery: ['#ffffff', '#ffffff', '#ffffff'], compound: '#ffffff' }, floodlit);
   const inst = {};
   const col = new THREE.Color();
@@ -16,7 +16,7 @@ export function buildCars(scene, track) {
     im.castShadow = k === 'paint' || k === 'carbon';
     im.frustumCulled = false;
     for (let i = 0; i < n; i++) {
-      const t = TEAMS[i], L = t.livery || [t.color, '#1b1b1f', t.color];
+      const t = teams[i], L = t.livery || [t.color, '#1b1b1f', t.color];
       const cc = { paint: L[0], secondary: L[1], accent: L[2], stripe: ['#e10600', '#ffd400', '#f2f2f2'][i % 3] }[k];
       if (cc) im.setColorAt(i, col.set(cc));
     }

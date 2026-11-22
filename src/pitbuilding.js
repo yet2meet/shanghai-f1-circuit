@@ -237,7 +237,7 @@ export function buildPitBuilding(scene, brand = null, cfg) {
   const trolley = batch(box(0.9, 1.0, 0.6).translate(0, 0.55, 0), floodlit(new THREE.MeshStandardMaterial({ map: drawerTex, roughness: 0.45, metalness: 0.3 }), 0.4), G);
   const trolleyTop = batch(box(0.94, 0.04, 0.64), steel, G);
   // 屏幕：四种专业界面（遥测 / 计时榜 / 赛道图 / 车辆状态）共用一张图集
-  const teleTex = screenAtlas(TEAMS, cfg.trackPoints, cfg.trackLabel);
+  const teleTex = screenAtlas(cfg.teams || TEAMS, cfg.trackPoints, cfg.trackLabel);
   const teleMat = new THREE.MeshStandardMaterial({ map: teleTex, emissive: '#ffffff', emissiveMap: teleTex, emissiveIntensity: 0.95, roughness: 0.3 });
   const screenB = [0, 1, 2, 3].map((i) => batch(screenGeo(i), teleMat, G));
   const bigScreenB = [0, 1, 2, 3].map((i) => batch(screenGeo(i, 1.5, 0.9), teleMat, G));
@@ -406,7 +406,8 @@ export function buildPitBuilding(scene, brand = null, cfg) {
   const down = batch(new THREE.CylinderGeometry(0.18, 0.18, 0.05, 10), lampMat('#ffffff', '#fff3d6', 3), G);
   for (let x = -L / 2 + 2; x < L / 2; x += 3.2) down.add(x, 11.6, -0.6);
 
-  for (const b of [pier, mull, partition, lights, drum, doors, hvac, down, strut]) G.add(b.build());
+  for (const b of [pier, mull, partition, lights, drum, doors, down, strut]) G.add(b.build());
+  if (cfg.showRoofEquipment !== false) G.add(hvac.build());
   // 车库内部的小件：镜头离维修楼较远时整体隐藏（细节层级），近处才画
   const detail = [...tyres, blanket, rack, rackBar, trolley, trolleyTop, ...screenB, ...bigScreenB, bigBack, screenBack, desk, deskLeg, chair, gantryBeam, hanger, tray, hose, jack, floorLine,
     ...Object.values(crewB).flatMap((c) => [c.shirt, c.rest]), ...Object.values(carB)].map((b) => b.build());

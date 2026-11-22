@@ -1,9 +1,8 @@
 // 赛道注册表：只放轻量的元信息（名称、公里数、界面文案），不引入任何三维或地图数据。
-// 每条赛道的场景、数据放在各自的模块里（shanghai.js / singapore.js），选中后才动态加载，
-// 所以只看上海的用户不会下载新加坡的数据。
+// 场景与地图数据按赛道分模块，选中后动态加载。
 //
 // 启动时选哪条赛道：
-//   1. 网址带 ?c=sg 时按网址（分享链接用）；
+//   1. 网址指定赛道时优先使用网址（分享链接用）；
 //   2. 否则读上次退出时记住的赛道（同一浏览器 = 同一用户）；
 //   3. 都没有（第一次来）→ 上海。
 // 切换赛道 = 记住新赛道 + 刷新页面，启动页的地球会重新转到新赛道。
@@ -11,6 +10,26 @@
 const KEY = 'sic-circuit';
 
 export const CIRCUITS = [
+  {
+    id: 'gb',
+    name: '银石赛道', nameEn: 'Silverstone Circuit',
+    short: '银石赛道', shortEn: 'Silverstone',
+    city: '银石', cityEn: 'Silverstone', gp: '英国大奖赛', gpEn: 'British Grand Prix',
+    km: '5.891', turns: 18, hasStands: true, hasSeats: true, preview: true, unpriced: true,
+    load: () => import('./silverstone.js'),
+    dict: {
+      title: ['银石赛道 · 施工预览', 'Silverstone Circuit · Work in progress'],
+      brandName: ['银石赛道', 'Silverstone Circuit'],
+      brandShort: ['银石赛道', 'Silverstone'],
+      brandSub: ['施工预览 · 5.891 km · 18 弯', 'Work in progress · 5.891 km · 18 turns'],
+      splashSub: ['FORMULA 1 · 英国大奖赛', 'FORMULA 1 · BRITISH GRAND PRIX'],
+      listSub: ['座席为示意 · 票价未收录，请以官方售票信息为准', 'Schematic seating · prices not recorded; consult the official ticket site'],
+      footnote: [
+        '施工预览：看台位置参考 2025 赛事图，座席为示意，票价未收录。地图数据 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 贡献者',
+        'Work in progress: grandstand locations follow the 2025 event map, seating is schematic, and prices are not recorded. Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+      ],
+    },
+  },
   {
     id: 'sh',
     name: '上海国际赛车场', nameEn: 'Shanghai International Circuit',

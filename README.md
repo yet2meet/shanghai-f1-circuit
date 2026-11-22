@@ -2,16 +2,17 @@
 
 **简体中文** · [English](README.en.md)
 
-在浏览器中探索上海国际赛车场和新加坡滨海湾街道赛道。可以查看看台与参考票价、进入座位视角，并从赛道周边的城市或场馆地标定位。
+在浏览器中探索上海国际赛车场、新加坡滨海湾街道赛道和英国银石赛道。可以查看场馆地标、看台分区和已收录的参考票价，并体验座位视角。
 
 | 赛道 | 模型内容 | 在线体验 |
 | --- | --- | --- |
 | **上海国际赛车场** · 5.451 km · 16 弯 | 主看台和各分区、维修楼、围场、内场卡丁车场，以及周边道路与地铁。默认白天。 | [打开上海](https://shanghai-f1-circuit.pages.dev/?c=sh) |
 | **新加坡滨海湾街道赛道** · 4.927 km · 19 弯 | 13 座可选座的看台、F1 维修楼和维修通道、城市道路与桥梁，以及滨海湾地标。默认夜晚。 | [打开新加坡](https://shanghai-f1-circuit.pages.dev/?c=sg) |
+| **银石赛道** · 5.891 km · 18 弯 | 2025 英国大奖赛布局预览，含 Landostand 等看台、Silverstone Wing、维修区、Stowe 内场和场内道路。默认白天。 | [打开银石](https://shanghai-f1-circuit.pages.dev/?c=gb) |
 
 ## 浏览方式
 
-- 从左上角的赛道菜单切换城市。切换时通过地球视角过渡。首次打开无参数的首页时显示上海，之后会记住当前浏览器上次查看的赛道。链接中的 `?c=sh` 或 `?c=sg` 会优先选中对应赛道。
+- 从左上角的赛道菜单切换城市。切换时通过地球视角过渡。首次打开无参数的首页时显示上海，之后会记住当前浏览器上次查看的赛道。链接中的 `?c=sh`、`?c=sg` 或 `?c=gb` 会优先选中对应赛道。
 - 从小地图、弯号或地标定位。打开**看台与票价**可查看分区，选中座位后可切换到对应视角。票价采用项目收录的官方资料，座位编号由模型生成。
 - 支持中英文界面、手机竖屏、昼夜切换和卫星底图。分享功能可以生成带二维码的当前视角海报，也可以复制赛道链接。
 
@@ -20,6 +21,13 @@
 - **夜景**分别调节赛道路面与维修通道的补光。滨海艺术中心、鱼尾狮和摩天轮有各自的夜间照明，滨水区域增加了局部水面反光。
 - **路网与桥梁**按 OSM 共用端点恢复滨海桥、Sheares 高架匝道和 Jubilee 步行桥的连接，同一路幅衔接处统一标高与铺面。桥墩避让赛道与周边道路，桥下看台按模型净空布置。
 - **看台**沿赛道曲线建模，设有阶梯过道、出入口和护栏。**维修区**包含车队车库、快车道、换胎位、维修墙指挥台和工作人员。
+- **维修通道进出口**按主赛道路缘平滑分流和汇入。入口设虚实线，T1 前的出口设红白边和黄色隔离带。通道和主赛道的接缝共用路面纹理与夜间补光。
+
+## 银石场景
+
+- **看台**覆盖 2025 赛事场地图上的 28 个命名分区，共 18 个看台入口。点击 Landostand 等看台后可查看字母分区及座位。座位为模型示意，票价未收录。
+- **维修区**包含 Silverstone Wing、41 个车库开间、快车道、换胎工位以及 10 支车队指挥台。
+- **场内设施**包含 Stowe 内场、保时捷体验中心、Hilton 酒店及通行桥。路线、看台分区和重点建筑的数据来源及估算范围见[银石赛道资料与基线](docs/银石赛道资料与基线.md)。
 
 ## 本地运行
 
@@ -57,7 +65,7 @@ npm run preview
 | 赛道走向与弯号 | 中心线采用 [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits) 的 `sg-2008.geojson`，对应 2023 年起的 19 弯布局。弯号位置结合官方弯序和曲率估算。赛道路宽、起终点线与发车格位置为示意。 |
 | 看台位置与座位 | 依据新加坡大奖赛的看台资料和 Circuit Park Map。收录 Pit、Super Pit、Pit Exit、Turn 1、Turn 2、Raffles、Republic、Stamford、Padang、Empress、Connaught、Bayfront 和 Marina Bay。尺寸、出入口和座位编号为模型示意。 |
 | 票价 | 收录自页面标题为 2027 年赛事的官方成人三日票标价，币种为新加坡元，含 9% GST。票价与库存以官方售票渠道为准。 |
-| 维修楼与维修通道 | 轮廓与进出场走向来自 OSM。车库开间和换胎位分配参考 [FIA 2026 新加坡站维修通道图](https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_pit_lane_v2.pdf#page=2)，通道宽度、指挥台与内部陈设为示意。 |
+| 维修楼与维修通道 | 轮廓与进出场走向来自 OSM。车库和换胎位分配参考 [FIA 2026 维修通道图](https://www.fia.com/system/files/decision-document/2026_singapore_grand_prix_-_competition_notes_-_pit_lane_v2.pdf#page=2)，进出口标线和隔离带参考 [FIA 2025 现场照片](https://www.fia.com/system/files/decision-document/2025_singapore_grand_prix_-_race_directors_event_notes_.pdf#page=7)。车道尺寸、标线位置、指挥台和内部陈设为示意。 |
 | 城市道路与桥梁 | 走向、道路共用端点、岸线和周边地物来自 OSM。高架坡度、标高、桥身和桥墩按场景简化。滨海桥的车道、步道和护栏单独建模。 |
 | 地标与灯光 | 滨海艺术中心的音乐厅和剧院参考 OSM 轮廓及 [DP Architects](https://www.dpa.com.sg/projects/esplanade-theatres-on-the-bay/) 和 [MERO](https://www.mero.com.sg/project_references/esplanade-theatres-on-the-bay-green-mark-gold/) 的建筑资料。鱼尾狮、摩天轮、金沙空中花园和滨海湾花园结合地图与公开资料建模，造型细节与夜景照明为近似。 |
 
@@ -79,9 +87,11 @@ node tools/gen-sg.mjs
 
 新加坡生成脚本输出 `src/circuits/sg/data.js` 与 `projection.json`，并刷新用于获取桥梁周边地物的查询范围。
 
+银石使用 `tools/osm-raw-silverstone/` 中的原始地图数据。运行 `node tools/gen-silverstone.mjs` 和 `python -X utf8 tools/gen-silverstone-osm.py` 生成赛道与 OSM 场景数据。
+
 ## 来源与许可
 
-- 地图数据 © [OpenStreetMap 贡献者](https://www.openstreetmap.org/copyright)，按 ODbL 使用。赛道中心线资料来自 [bacinger/f1-circuits](https://github.com/bacinger/f1-circuits)（MIT）。
+- 地图数据 © [OpenStreetMap 贡献者](https://www.openstreetmap.org/copyright)，按 ODbL 使用。新加坡和银石的中心线来自 bacinger/f1-circuits。[MIT 许可](public/third-party/f1-circuits-LICENSE.md)
 - 3D 渲染使用 [Three.js](https://threejs.org/)，开发和构建使用 Vite。启动页的地球轮廓来自 [world-atlas](https://github.com/topojson/world-atlas)（Natural Earth，公有领域），卫星底图来自 Esri World Imagery。
 - [地面纹理来源](public/tex/SOURCES.md) · [品牌素材来源](public/brand/SOURCES.md) · [品牌素材配置](public/brand/README.md)
 

@@ -230,7 +230,7 @@ function draw(now) {
       ctx.beginPath(); ctx.arc(x, y, 1.8, 0, 7); ctx.fill();
       continue;
     }
-    const age = (now - v.t0) / 1000;
+    const age = Math.max(0, (now - v.t0) / 1000);
     const isHome = v === focus && S.phase !== 'spin';
     const col = v === focus ? '255,214,10' : '255,69,58';
     if (age < 1.3 || isHome) {

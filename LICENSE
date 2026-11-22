@@ -11,6 +11,7 @@ Copyright (c) 2026 yet2meet. All rights reserved.
 
 第三方内容不属于上述作者权利范围，仍按各自的许可使用：
   - 地图数据 © OpenStreetMap 贡献者，ODbL 许可（https://www.openstreetmap.org/copyright）；
+  - f1-circuits 的中心线数据采用 MIT 许可，见 public/third-party/f1-circuits-LICENSE.md；
   - three.js、world-atlas 等依赖库按其各自的开源许可；
   - Formula 1、F1 标志及各车队名称与标志归其各自权利人所有，本项目按项目方获得的授权使用。
 
