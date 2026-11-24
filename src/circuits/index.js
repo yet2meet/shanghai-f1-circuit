@@ -5,7 +5,7 @@
 //   1. 网址指定赛道时优先使用网址（分享链接用）；
 //   2. 否则读上次退出时记住的赛道（同一浏览器 = 同一用户）；
 //   3. 都没有（第一次来）→ 上海。
-// 切换赛道 = 记住新赛道 + 刷新页面，启动页的地球会重新转到新赛道。
+// 切换赛道后更新当前状态和上次访问记录，供分享和下次启动使用。
 
 const KEY = 'sic-circuit';
 
@@ -74,37 +74,38 @@ export const CIRCUITS = [
 
 const byId = Object.fromEntries(CIRCUITS.map((c) => [c.id, c]));
 
+function storedCircuit() {
+  try { return localStorage.getItem(KEY); } catch { return null; }
+}
+
+export const firstStartup = !byId[storedCircuit()];
+
 function resolve() {
   try {
     const q = new URLSearchParams(location.search).get('c');
     if (q && byId[q]) return q;
   } catch { /* 非浏览器环境 */ }
-  try {
-    const s = localStorage.getItem(KEY);
-    if (s && byId[s]) return s;
-  } catch { /* 无痕模式等 */ }
+  const s = storedCircuit();
+  if (s && byId[s]) return s;
   return 'sh';
 }
 
-export const CURRENT = resolve();
-export const circuit = byId[CURRENT];
+export let CURRENT = resolve();
+export let circuit = byId[CURRENT];
 
 /** 记住当前赛道：下次打开时直接回到这里 */
 export function rememberCircuit(id = CURRENT) {
   try { localStorage.setItem(KEY, id); } catch { /* 无痕模式等 */ }
 }
 
-/**
- * 切换赛道：记住新赛道 → 记下“从哪来、到哪去”（新页面的启动页据此接着转，见 splash.js）→ 刷新页面。
- * 网址里的 ?c= 去掉，以免覆盖刚做的选择。
- */
 export function switchCircuit(id) {
   if (!byId[id] || id === CURRENT) return;
+  CURRENT = id;
+  circuit = byId[id];
   rememberCircuit(id);
-  try { sessionStorage.setItem('sic-trans', JSON.stringify({ from: CURRENT, to: id, ts: Date.now() })); } catch { /* 无痕模式等：退回普通启动页 */ }
   const u = new URL(location.href);
   u.searchParams.delete('c');
-  location.href = u.toString();
+  history.replaceState(history.state, '', u);
 }
 
 /** 分享链接：非默认赛道带上 ?c=，朋友打开时直接看到同一条赛道 */

@@ -7,6 +7,7 @@ export const AUTHOR = 'yet2meet';
 export const YEAR = 2026;
 
 let info = null; // 当前赛道档案的 info
+let placeBar;
 const sections = () => [
   [t('免责声明', 'Disclaimer'), info.disclaimer()],
   [t('版权声明', 'Copyright'), t(
@@ -18,6 +19,11 @@ const sections = () => [
 
 export function initAbout(circuitInfo) {
   info = circuitInfo;
+  if (placeBar) {
+    placeBar();
+    if (dlg) fill();
+    return;
+  }
   // 左下角的署名条（点开“关于”）
   const bar = document.createElement('button');
   bar.id = 'aboutBar';
@@ -27,9 +33,9 @@ export function initAbout(circuitInfo) {
   bar.addEventListener('click', (e) => { e.stopPropagation(); open(); });
   // 电脑：右下角一行小字；手机：挂在小地图卡片正下方的一个小胶囊（地图署名收进“关于”面板）
   const mq = matchMedia('(max-width: 860px)');
-  const place = () => (mq.matches ? document.getElementById('minimap') : document.body).appendChild(bar);
-  place();
-  mq.addEventListener('change', place);
+  placeBar = () => (mq.matches ? document.getElementById('minimap') : document.body).appendChild(bar);
+  placeBar();
+  mq.addEventListener('change', placeBar);
   onLang(() => { label(); if (dlg) fill(); });
 
   // 控制台署名

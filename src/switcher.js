@@ -1,13 +1,10 @@
 // 赛道切换：左上角的品牌条就是切换入口，点开列出所有赛道。
-// 选中后的过渡（近乎无缝）：当前画面镜头拉升、淡入地球并缩回全貌 → 刷新页面 →
-// 新页面的地球接着从旧城市转到新城市，再放大进入新赛道。之后每次打开都回到上次退出时的赛道（见 circuits/index.js）。
 import { t, L, onLang } from './i18n.js';
-import { CIRCUITS, CURRENT, switchCircuit } from './circuits/index.js';
-import { startDeparture } from './splash.js';
+import { CIRCUITS, CURRENT } from './circuits/index.js';
 
 const CODE = { sh: 'SH', sg: 'SG' };
 
-export function initSwitcher() {
+export function initSwitcher(onSelect) {
   const brand = document.getElementById('brand');
   if (!brand) return;
   brand.setAttribute('role', 'button');
@@ -35,18 +32,6 @@ export function initSwitcher() {
   render();
   onLang(render);
 
-  let leaving = false;
-  /** 离开当前赛道：界面淡出、镜头拉升，同时盖上地球缩回全貌；缩完刷新页面 */
-  const leave = (id) => {
-    if (leaving) return;
-    leaving = true;
-    set(false);
-    document.body.classList.add('leaving');
-    window.__app?.liftOff?.();
-    startDeparture(id, () => switchCircuit(id));
-    setTimeout(() => switchCircuit(id), 5000); // 后台标签页动画帧暂停时的兜底
-  };
-
   let isOpen = false;
   const set = (on) => {
     isOpen = on;
@@ -62,9 +47,10 @@ export function initSwitcher() {
     e.stopPropagation();
     const b = e.target.closest('.cm-item');
     if (!b) return;
-    if (b.dataset.id === CURRENT) return set(false);
-    leave(b.dataset.id);
+    set(false);
+    if (b.dataset.id !== CURRENT) onSelect(b.dataset.id);
   });
   document.addEventListener('click', () => { if (isOpen) set(false); });
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen) { e.stopImmediatePropagation(); set(false); } }, true);
+  return render;
 }

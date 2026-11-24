@@ -25,13 +25,13 @@ const DICT = {
   homeTitle: ['回到全景', 'Back to overview'],
   osm: ['© OpenStreetMap 贡献者', '© OpenStreetMap contributors'],
   splashStep: ['正在准备', 'Preparing'],
+  loadingProgress: ['加载进度', 'Loading progress'],
   langLabel: ['语言', 'Language'],
   switchCircuit: ['切换赛道', 'Switch circuit'],
-  ...circuit.dict, // 各赛道自己的名称、副标题、启动页文案、页脚
 };
-export const d = (k) => t(...DICT[k]);
+export const d = (k) => t(...(circuit.dict[k] || DICT[k]));
 
-function applyStatic() {
+export function applyStatic() {
   document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
   document.title = d('title');
   document.querySelectorAll('[data-i18n]').forEach((el) => { el.innerHTML = d(el.dataset.i18n); });
@@ -41,8 +41,11 @@ function applyStatic() {
   document.querySelector('#langSeg')?.classList.toggle('en', lang === 'en');
 }
 
-const listeners = [];
-export const onLang = (fn) => listeners.push(fn);
+const listeners = new Set();
+export function onLang(fn, { signal } = {}) {
+  listeners.add(fn);
+  signal?.addEventListener('abort', () => listeners.delete(fn), { once: true });
+}
 export function setLang(l) {
   if (l === lang) return;
   lang = l;

@@ -4,11 +4,11 @@ import { circuit } from './circuits/index.js';
 
 let open = '';
 /** info：当前赛道档案的 info（facts / notes）；没有看台的赛道不显示“看台与票价”按钮 */
-export function initDrawers(data) {
+export function initDrawers(data, { signal }) {
   const body = document.body;
   const pList = document.getElementById('pillList'), pInfo = document.getElementById('pillInfo');
   const info = document.getElementById('info');
-  if (!circuit.hasStands) pList.style.display = 'none'; // 没有看台数据的赛道不显示“看台与票价”
+  pList.style.display = circuit.hasStands ? '' : 'none';
   const renderInfo = () => {
     info.innerHTML = `<div class="d-scroll">
       <div class="panel-head" style="padding:4px 4px 10px"><h2>${L(circuit, 'name')}</h2><span class="muted">F1 ${L(circuit, 'gp')}</span></div>
@@ -23,11 +23,11 @@ export function initDrawers(data) {
     pList.setAttribute('aria-expanded', open === 'list');
     pInfo.setAttribute('aria-expanded', open === 'info');
   };
-  pList.addEventListener('click', () => set('list'));
-  pInfo.addEventListener('click', () => set('info'));
+  pList.addEventListener('click', () => set('list'), { signal });
+  pInfo.addEventListener('click', () => set('info'), { signal });
   // 选了看台就收起列表（详情面板会在另一侧打开）
-  document.getElementById('listItems').addEventListener('click', (e) => { if (e.target.closest('.item') && open) set(open); });
-  addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) { e.stopImmediatePropagation(); set(open); } }, true);
-  onLang(renderInfo);
+  document.getElementById('listItems').addEventListener('click', (e) => { if (e.target.closest('.item') && open) set(open); }, { signal });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && open) { e.stopImmediatePropagation(); set(open); } }, { capture: true, signal });
+  onLang(renderInfo, { signal });
 }
 export const closeDrawers = () => { if (open) document.getElementById(open === 'list' ? 'pillList' : 'pillInfo').click(); };

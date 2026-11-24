@@ -38,13 +38,13 @@ const buildSteps = () => [
 ];
 let STEPS = [];
 
-export function initGuide(circuitInfo, { force = false } = {}) {
+export function initGuide(circuitInfo, { force = false, offer = true } = {}) {
   info = circuitInfo;
   STEPS = buildSteps();
   let seen = false;
   try { seen = localStorage.getItem(KEY) === '1'; } catch { /* 无痕模式等 */ }
   addHelpButton();
-  if (!seen || force) setTimeout(start, 2200); // 等开场镜头落定
+  if ((offer && !seen) || force) setTimeout(start, 2200); // 等开场镜头落定
 }
 
 function addHelpButton() {
