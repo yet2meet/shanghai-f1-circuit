@@ -161,7 +161,7 @@ function run(root, { fromId, toId }) {
     } else if (S.phase === 'wait') {
       if (ready) S.phase = 'zoom';
     } else if (S.phase === 'zoom') {
-      S.t = Math.min(1, S.t + dt / 1.05);
+      S.t = Math.min(1, S.t + dt / 1.4);
       S.zoom = 1 + Math.pow(S.t, 2.6) * 26;
       if (S.t >= 0.4) reveal();
       S.alpha = 1 - Math.max(0, (S.t - 0.4) / 0.6);
