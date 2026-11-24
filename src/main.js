@@ -914,7 +914,7 @@ export function mountCircuit(entry) {
     reveal({ startup = false, guide = false, recovering = false } = {}) {
       if (startup) setTimeout(() => loadPhotoTextures(renderer), 600);
       if (guide) initGuide(profile.info);
-      flyTo(HOME.pos, HOME.target, startup ? 1.9 : recovering ? 0.65 : 1.25);
+      flyTo(HOME.pos, HOME.target, startup ? 2.1 : recovering ? 0.65 : 1.55);
       resume();
     },
     dispose() {
