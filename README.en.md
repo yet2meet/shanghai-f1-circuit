@@ -27,7 +27,7 @@ Explore the Shanghai International Circuit, Marina Bay Street Circuit, and Silve
 
 - **Grandstands** cover 28 named sections from the 2025 event map, organized into 18 groups. Open Landostand or another group to browse its sections and modeled seats. Ticket prices are unavailable in the viewer.
 - **Pit facilities** include the Silverstone Wing, 41 garage bays, the fast lane, pit stop bays, and consoles for ten teams.
-- **Venue landmarks** include the Stowe infield, Porsche Experience Centre, the Hilton, and the venue's bridges. [Silverstone reference notes in Chinese](docs/银石赛道资料与基线.md)
+- **Venue landmarks** include the Stowe infield, Porsche Experience Centre, the Hilton, and the venue's bridges.
 
 ## Run locally
 
