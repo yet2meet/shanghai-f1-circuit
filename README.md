@@ -2,17 +2,18 @@
 
 **简体中文** · [English](README.en.md)
 
-在浏览器中探索上海国际赛车场、新加坡滨海湾街道赛道和英国银石赛道。可以查看场馆地标、看台分区和已收录的参考票价，并体验座位视角。
+在浏览器中探索上海国际赛车场、新加坡滨海湾街道赛道、英国银石赛道和日本铃鹿赛道。可以查看场馆地标、看台分区和已收录的参考票价，并体验座位视角。
 
 | 赛道 | 模型内容 | 在线体验 |
 | --- | --- | --- |
 | **上海国际赛车场** · 5.451 km · 16 弯 | 主看台和各分区、维修楼、围场、内场卡丁车场，以及周边道路与地铁。默认白天。 | [打开上海](https://shanghai-f1-circuit.pages.dev/?c=sh) |
 | **新加坡滨海湾街道赛道** · 4.927 km · 19 弯 | 13 座可选座的看台、F1 维修楼和维修通道、城市道路与桥梁，以及滨海湾地标。默认夜晚。 | [打开新加坡](https://shanghai-f1-circuit.pages.dev/?c=sg) |
 | **银石赛道** · 5.891 km · 18 弯 | 采用 2025 英国大奖赛布局，含 Landostand 等看台、Silverstone Wing、维修区、Stowe 内场和场内道路。默认白天。 | [打开银石](https://shanghai-f1-circuit.pages.dev/?c=gb) |
+| **铃鹿赛道** · 5.807 km · 18 弯 | 以 2026 日本大奖赛为基准，包含 8 字交叉桥、春季樱花景观、摩天轮、维修区和可选座看台。默认白天。 | [打开铃鹿](https://shanghai-f1-circuit.pages.dev/?c=jp) |
 
 ## 浏览方式
 
-- 从左上角的赛道菜单切换城市。切换时通过地球视角过渡。首次打开无参数的首页时显示上海，之后会记住当前浏览器上次查看的赛道。链接中的 `?c=sh`、`?c=sg` 或 `?c=gb` 会优先选中对应赛道。
+- 从左上角的赛道菜单切换城市。切换时通过地球视角过渡。首次打开无参数的首页时显示上海，之后会记住当前浏览器上次查看的赛道。`?c=sh`、`?c=sg`、`?c=gb`、`?c=jp` 可直达对应赛道。
 - 从小地图、弯号或地标定位。打开**看台与票价**可查看分区，选中座位后可切换到对应视角。票价采用项目收录的官方资料，座位编号由模型生成。
 - 支持中英文界面、手机竖屏、昼夜切换和卫星底图。分享功能可以生成带二维码的当前视角海报，也可以复制赛道链接。
 
@@ -28,6 +29,14 @@
 - **看台**覆盖 2025 赛事场地图上的 28 个命名分区，共 18 个看台入口。点击 Landostand 等看台后可查看字母分区及座位。座位为模型示意，票价未收录。
 - **维修区**包含 Silverstone Wing、41 个车库开间、快车道、换胎工位以及 10 支车队指挥台。
 - **场内设施**包含 Stowe 内场、保时捷体验中心、Hilton 酒店及通行桥。
+
+## 铃鹿场景
+
+- **地标与樱花**。点击正门樱花道、S 弯樱花、铃鹿摩天轮或 8 字交叉桥可跳转到近景。迎宾广场、S‑PLAZA 和周边林地也布置了浅粉樱花。
+- **看台与维修区**。从 19 个看台入口进入对应座区，例如进入 A 看台后选择 A1 或 A2。主直道旁的维修区包含车队车房、维修通道和围场。
+- **入口动线**。正门与酒店门的步道在迎宾广场一带接合，经步行桥、摩天轮和 GP 广场通往主看台。
+
+看台座号、出入口、铺面尺度、樱花树位、维修区设施和桥体细部为示意。[铃鹿数据来源与建模说明](tools/suzuka-sources.md)
 
 ## 本地运行
 
@@ -89,9 +98,12 @@ node tools/gen-sg.mjs
 
 银石使用 `tools/osm-raw-silverstone/` 中的原始地图数据。运行 `node tools/gen-silverstone.mjs` 和 `python -X utf8 tools/gen-silverstone-osm.py` 生成赛道与 OSM 场景数据。
 
+铃鹿使用 `tools/osm-raw-suzuka/` 中的 OSM 和国土地理院高程快照。运行 `python -X utf8 tools/gen-suzuka.py` 可重建模型数据。
+
 ## 来源与许可
 
 - 地图数据 © [OpenStreetMap 贡献者](https://www.openstreetmap.org/copyright)，按 ODbL 使用。新加坡和银石的中心线来自 bacinger/f1-circuits。[MIT 许可](public/third-party/f1-circuits-LICENSE.md)
+- 铃鹿使用平面场地，保留 8 字交叉桥的局部引坡。重建时使用日本国土地理院的高程数据区分交叉桥的上下两段。 [国土地理院瓦片目录](https://maps.gsi.go.jp/development/ichiran.html) · [内容使用条款](https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html)
 - 3D 渲染使用 [Three.js](https://threejs.org/)，开发和构建使用 Vite。启动页的地球轮廓来自 [world-atlas](https://github.com/topojson/world-atlas)（Natural Earth，公有领域），卫星底图来自 Esri World Imagery。
 - [地面纹理来源](public/tex/SOURCES.md) · [品牌素材来源](public/brand/SOURCES.md) · [品牌素材配置](public/brand/README.md)
 

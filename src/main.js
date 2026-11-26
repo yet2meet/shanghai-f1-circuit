@@ -120,10 +120,10 @@ export async function prepareCircuit(circuit, progress, initialProfile) {
   }
   const { env, stands } = built;
   if (!MOBILE) env.sun.shadow.mapSize.set(4096, 4096);
-  // 每次只绘制一条赛道，三颗太阳可轮流使用同一个阴影缓冲。
+  // 每次只绘制一条赛道，各场景可轮流使用同一个阴影缓冲。
   if (shadowTarget) env.sun.shadow.map = shadowTarget;
   const sat = createSatellite(scene, { mobile: MOBILE, projection: profile.projection, venue: profile.venue });
-  const camLimits = buildCamLimits(stands, { buildings: built.camBuildings || profile.osmData.OSM_BUILDINGS, venue: profile.venue });
+  const camLimits = buildCamLimits(stands, { buildings: built.camBuildings || profile.osmData.OSM_BUILDINGS, venue: profile.venue, groundAt: built.groundAt });
   const entry = { circuit, scene, profile, built, sat, emissives, camLimits };
   const camera = new THREE.PerspectiveCamera(38, 1, 30, 14000);
   const home = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
@@ -398,12 +398,12 @@ export function mountCircuit(entry) {
     labelsEl.appendChild(el);
     labels.push({ el, pos: s.labelPos, kind: 'stand', id: s.spec.id, ax: -0.5, ay: -1, dy: -16 });
   });
-  TURNS.forEach(([n, x, y]) => {
+  TURNS.forEach(([n, x, y, h = 0]) => {
     const el = document.createElement('div');
     el.className = 'turn';
     el.textContent = n;
     labelsEl.appendChild(el);
-    labels.push({ el, pos: V(x, y, 14), kind: 'turn', ax: -0.5, ay: -0.5, dy: 0 });
+    labels.push({ el, pos: V(x, y, h + 14), kind: 'turn', ax: -0.5, ay: -0.5, dy: 0 });
   });
   // 地标标签（如滨海湾金沙、鱼尾狮公园）：像弯号一样标在地图上，点击镜头飞过去
   (profile.landmarks || []).forEach((lm) => {
@@ -412,15 +412,16 @@ export function mountCircuit(entry) {
     el.innerHTML = `<i></i><b>${L(lm, 'name')}</b>`;
     el.onclick = () => flyToLandmark(lm);
     labelsEl.appendChild(el);
-    labels.push({ el, pos: V(lm.at[0], lm.at[1], lm.at[2] ?? 12), kind: 'landmark', lm, ax: -0.5, ay: -1, dy: -6 });
+    labels.push({ el, pos: V(lm.at[0], lm.at[1], lm.at[2] ?? 12), kind: 'landmark', lm, ax: -0.5, ay: -1, dy: lm.labelOffset ?? -6 });
   });
   function flyToLandmark(lm) {
     if (state.mode !== 'overview') goHome();
-    const t = V(lm.at[0], lm.at[1], (lm.at[2] ?? 12) * 0.25), v = lm.view || [-230, 150, 260];
+    const t = V(lm.at[0], lm.at[1], lm.targetY ?? (lm.at[2] ?? 12) * 0.25);
+    const v = lm.view || [-230, 150, 260];
     flyTo(t.clone().add(new THREE.Vector3(v[0], v[1], v[2])), t, 1.8);
   }
   // 票区标签（进入选座后显示；只有一个票区的看台不重复标注）
-  stands.forEach((s) => s.blocks && new Set(s.blocks.map((b) => b.zone)).size > 1 && s.blocks.forEach((b) => {
+  stands.forEach((s) => s.blocks && new Set(s.blocks.map((b) => b.zone)).size > 1 && (s.sectionBlocks ?? s.blocks).forEach((b) => {
     const el = document.createElement('div');
     el.className = 'sec off';
     el.style.setProperty('--c', s.spec.zones[b.zone].color);
@@ -479,7 +480,8 @@ export function mountCircuit(entry) {
   function updateLabels() {
     const w = innerWidth, h = innerHeight;
     const dist = camera.position.distanceTo(controls.target);
-    const low = camera.position.y < 40; // 贴近地面时远处的标签会沿地平线挤成一排，只保留近处的
+    const groundY = built.groundAt?.(camera.position.x, camera.position.z) ?? 0;
+    const low = camera.position.y - groundY < 40; // 贴近地面时只保留近处的标签
     const homeDist = HOME.pos.distanceTo(HOME.target); // 全景镜头的距离：手机竖屏的全景比桌面远得多，标签的显示范围随它放宽
     for (const l of labels) {
       _v.copy(l.pos).project(camera);
@@ -525,11 +527,11 @@ export function mountCircuit(entry) {
       // 票区快速定位：只列官方票区（A 看台的 A上 被铂金区分成 1 号弯一侧和 16 号弯一侧两段）
       const zoneCount = new Set(s.blocks.map((b) => b.zone)).size;
       const seen = new Set();
-      const chipList = s.blocks.filter((b) => { const k = b.zone + b.side; if (seen.has(k)) return false; seen.add(k); return true; })
+      const chipList = s.blocks.filter((b) => { const k = b.detail ?? b.zone + b.side; if (seen.has(k)) return false; seen.add(k); return true; })
         .sort((x, y) => y.tier - x.tier);
       const sections = zoneCount > 1
         ? `<div class="sec-title">${circuit.unpriced ? tr('模型分区 · 点击定位', 'Model sections · tap to locate') : tr('官方票区 · 点击定位', 'Official zones · tap to locate')}</div>
-          <div class="chips wide">${chipList.map((b) => `<button class="chip" data-act="block" data-b="${b.idx}" style="--c:${spec.zones[b.zone].color}">${L(spec.zones[b.zone], 'name')}${sideName(b)}</button>`).join('')}</div>`
+          <div class="chips wide">${chipList.map((b) => `<button class="chip" data-act="block" data-b="${b.idx}" style="--c:${spec.zones[b.zone].color}">${b.detail ?? L(spec.zones[b.zone], 'name')}${sideName(b)}</button>`).join('')}</div>`
         : circuit.unpriced
           ? `<div class="sec-title">${tr('模型区域', 'Model area')}</div><p class="d-desc" style="margin:0 2px 12px">${tr('模型未按官方票区细分。', 'The model does not reproduce official ticket subdivisions.')}</p>`
           : `<div class="sec-title">${tr('官方票区', 'Official zone')}</div><p class="d-desc" style="margin:0 2px 12px">${tr(`整座看台为同一票区：${Object.values(spec.zones)[0].name}。官方未公布更细的分区编号。`, `The whole stand is one zone: ${L(Object.values(spec.zones)[0], 'name')}. No finer section numbers are published officially.`)}</p>`;
@@ -564,7 +566,7 @@ export function mountCircuit(entry) {
     detail.innerHTML = `<div class="d-scroll">${head}
       <p class="d-desc">${L(spec, 'desc')}</p>
       <div class="stats">${stats}</div>
-      ${spec.grouped ? `<div class="sec-title">${tr('选择分区', 'Choose a section')}</div><div class="chips wide">${s.blocks.map((b) => `<button class="chip" data-act="group-zone" data-b="${b.idx}" style="--c:${spec.zones[b.zone].color}">${L(spec.zones[b.zone], 'name')}</button>`).join('')}</div>` : ''}
+      ${spec.grouped ? `<div class="sec-title">${tr('选择分区', 'Choose a section')}</div><div class="chips wide">${(s.sectionBlocks ?? s.blocks).map((b) => `<button class="chip" data-act="group-zone" data-b="${b.idx}" style="--c:${spec.zones[b.zone].color}">${L(spec.zones[b.zone], 'name')}</button>`).join('')}</div>` : ''}
       ${spec.grouped ? '' : `<div class="sec-title">${circuit.unpriced ? tr('模型信息', 'Model information') : tr('票价 · 三日票', 'Prices · 3-day pass')}</div>${Object.values(spec.zones).map(zoneRow).join('')}`}
       <div class="actions">
         ${spec.type === 'seats'

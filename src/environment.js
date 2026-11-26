@@ -77,6 +77,7 @@ export function buildEnvironment(scene, track, stands, renderer, cfg) {
   ground.receiveShadow = true;
   ground.renderOrder = -10;
   scene.add(ground);
+  env.ground = ground;
 
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s3 = new THREE.Vector3(), p3 = new THREE.Vector3(), col = new THREE.Color();
   const up = new THREE.Vector3(0, 1, 0);

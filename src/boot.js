@@ -16,16 +16,23 @@ async function start() {
   const others = CIRCUITS.filter((target) => target.id !== initialCircuit.id);
   const prefetchOthers = () => others.forEach((target) => { void prefetchCircuit(target).catch(() => {}); });
   const targets = firstStartup ? [initialCircuit, ...others] : [initialCircuit];
-  const milestones = firstStartup ? [2, 12, 18, 23] : [2, 23];
+  // 首场占用较大的进度区间，其余区间按实际预备的场馆数分配。
+  const milestones = targets.length === 1 ? [2, 23]
+    : [2, ...targets.map((_, i) => 12 + i * 11 / (targets.length - 1))];
   let entry;
   if (firstStartup) prefetchOthers();
   for (const [i, target] of targets.entries()) {
     const startAt = milestones[i], span = milestones[i + 1] - startAt;
     splash.progress(startAt / 24, t(`正在准备${target.city}`, `Preparing ${target.cityEn}`));
-    const prepared = await prepareCircuit(target, (p, label) => {
-      splash.progress((startAt + p * span) / 24, label);
-    }, i === 0 ? initialProfile : undefined);
-    if (i === 0) entry = prepared;
+    try {
+      const prepared = await prepareCircuit(target, (p, label) => {
+        splash.progress((startAt + p * span) / 24, label);
+      }, i === 0 ? initialProfile : undefined);
+      if (i === 0) entry = prepared;
+    } catch (error) {
+      if (i === 0) throw error;
+      console.warn(`Could not prepare ${target.id}`, error);
+    }
   }
 
   let active = mountCircuit(entry);

@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "polygon-clipping": "0.15.7",
     "qrcode-generator": "^1.4.4",
     "three": "^0.170.0",
     "world-atlas": "^2.0.2"

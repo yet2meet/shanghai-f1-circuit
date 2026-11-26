@@ -4,7 +4,7 @@
 export const GP_VENUES = [
   { city: '墨尔本', gp: '澳大利亚大奖赛', cityEn: 'Melbourne', gpEn: 'Australian Grand Prix', lat: -37.85, lon: 144.97 },
   { city: '上海', gp: '中国大奖赛', cityEn: 'Shanghai', gpEn: 'Chinese Grand Prix', lat: 31.34, lon: 121.22, id: 'sh' },
-  { city: '铃鹿', gp: '日本大奖赛', cityEn: 'Suzuka', gpEn: 'Japanese Grand Prix', lat: 34.84, lon: 136.54 },
+  { city: '铃鹿', gp: '日本大奖赛', cityEn: 'Suzuka', gpEn: 'Japanese Grand Prix', lat: 34.84, lon: 136.54, id: 'jp' },
   { city: '萨基尔', gp: '巴林大奖赛', cityEn: 'Sakhir', gpEn: 'Bahrain Grand Prix', lat: 26.03, lon: 50.51 },
   { city: '吉达', gp: '沙特阿拉伯大奖赛', cityEn: 'Jeddah', gpEn: 'Saudi Arabian Grand Prix', lat: 21.63, lon: 39.1 },
   { city: '迈阿密', gp: '迈阿密大奖赛', cityEn: 'Miami', gpEn: 'Miami Grand Prix', lat: 25.96, lon: -80.24 },

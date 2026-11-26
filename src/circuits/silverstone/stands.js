@@ -52,7 +52,10 @@ export function buildSilverstoneStands(scene, track, specs) {
   const railMaterial = std('#b8c0c5', { metalness: 0.4, roughness: 0.55 }, 0.25);
   const roofMaterial = std('#d6dadd', { roughness: 0.55, metalness: 0.30 }, 0.15);
   for (const spec of specs) {
-    const curve = curvedStandPlan(spec);
+    const baseY = spec.baseY ?? 0;
+    const grade = spec.baseGrade;
+    const offset = (x, z) => grade ? (x - grade.x) * grade.dx + (z - grade.z) * grade.dz : 0;
+    const curve = spec.curvePlan ?? curvedStandPlan(spec);
     const world = spec.polygon.map(([x, n]) => new THREE.Vector3(x, 0, -n));
     const origin = world.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / world.length);
     let axis = new THREE.Vector3(1, 0, 0), longest = 0;
@@ -91,6 +94,13 @@ export function buildSilverstoneStands(scene, track, specs) {
     };
     const outAt = curve ? curve.outwardAt : () => outward;
     const toWorld = curve ? curve.at : (u, v, y = 0) => origin.clone().addScaledVector(axis, u).addScaledVector(outward, v).setY(y);
+    const flipSubsections = spec.westboundSubsections && toWorld(u1, 0).x > toWorld(u0, 0).x;
+    const subsectionU = t => u0 + L * (flipSubsections ? 1 - t : t);
+    const subsections = spec.subsectionBounds?.map(({ name, along, depth, zoneByName }) => ({
+      name, zone: zoneByName ? name : undefined,
+      u: along.map(subsectionU).sort((a, b) => a - b),
+      v: depth?.map(value => v0 + value) ?? [v0, v1],
+    }));
     const angle = u => { const direction = outAt(u); return Math.atan2(direction.x, direction.z); };
     const beam = (material, a, b, width) => {
       const delta = b.clone().sub(a);
@@ -178,8 +188,10 @@ export function buildSilverstoneStands(scene, track, specs) {
           if (curve && r % 2 === 1 && rowDepth * curve.depthAt(u) / D < 0.52) continue;
           if (roofSupports.some(post => Math.abs(u - post.u) < 0.34 && Math.abs(v - post.postV) < 0.33)) continue;
           const p = toWorld(u, v);
-          base.push(p.x, y, p.z); rot.push(angle(u));
-          seats.push({ zone: 'g', row: r + 1, num: 0, part: 0, j: Math.random() });
+          base.push(p.x, baseY + offset(p.x, p.z) + y, p.z); rot.push(angle(u));
+          const section = subsections?.find(s => u >= s.u[0] && u <= s.u[1] && v >= s.v[0] && v <= s.v[1]);
+          seats.push({ zone: 'g', section: section?.zone, detail: section?.name ?? spec.sectionDetail,
+            row: r + 1, num: 0, part: 0, j: Math.random() });
         }
       }
       for (let i = first; i < seats.length; i++) seats[i].num = i - first + 1;
@@ -196,6 +208,26 @@ export function buildSilverstoneStands(scene, track, specs) {
       addVomitory(entrancesGeometry, toWorld(u, entryNear), angle(u), frame, { first: 0 }, entryRows, depth);
     }
     const portalMeshes = buildVomitoryMeshes(entrancesGeometry, portalMat, portalDark);
+    const raise = mesh => {
+      mesh.position.y += baseY;
+      if (!grade) return;
+      if (mesh.isInstancedMesh) {
+        const transform = new THREE.Matrix4().set(
+          1, 0, 0, 0, grade.dx, 1, grade.dz, offset(0, 0), 0, 0, 1, 0, 0, 0, 0, 1,
+        );
+        const matrix = new THREE.Matrix4();
+        for (let i = 0; i < mesh.count; i++) {
+          mesh.getMatrixAt(i, matrix);
+          mesh.setMatrixAt(i, matrix.premultiply(transform));
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+        return;
+      }
+      const pos = mesh.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) + offset(pos.getX(i), pos.getZ(i)));
+      mesh.geometry.computeVertexNormals();
+    };
+    for (const mesh of portalMeshes) raise(mesh);
     if (portalMeshes.length) scene.add(...portalMeshes);
     const seatMesh = new THREE.InstancedMesh(seatGeo, seatMat, seats.length);
     const baseF = new Float32Array(base), rotF = new Float32Array(rot);
@@ -210,12 +242,21 @@ export function buildSilverstoneStands(scene, track, specs) {
       const depth = toWorld(u, v0).distanceTo(toWorld(u, v1));
       const hit = new THREE.Mesh(new THREE.BoxGeometry(L / hitCount + (curve ? 1 : 0), H + 3, depth),
         new THREE.MeshBasicMaterial({ visible: false }));
-      hit.position.copy(toWorld(u, (v0 + v1) / 2, (H + 3) / 2));
+      hit.position.copy(toWorld(u, (v0 + v1) / 2, baseY + (H + 3) / 2));
+      hit.position.y += offset(hit.position.x, hit.position.z);
       hit.rotation.y = angle(u);
       hit.userData.standId = spec.id;
       scene.add(hit); hitboxes.push(hit);
     }
-    const center = toWorld((u0 + u1) / 2, (v0 + v1) / 2).setY(H / 2);
+    const center = toWorld((u0 + u1) / 2, (v0 + v1) / 2, baseY + H / 2);
+    const blocks = subsections?.map(({ name, zone, u: span, v: depth }, idx) => {
+      const u = (span[0] + span[1]) / 2, v = THREE.MathUtils.clamp((depth[0] + depth[1]) / 2, v0, v1);
+      const point = toWorld(u, v, baseY + 0.3 + rise * (v - v0) / rowDepth);
+      return { zone, detail: zone ? undefined : name, idx, tier: 0, side: '', center: point, f: outAt(u).clone().negate(),
+        label: point.clone().add(new THREE.Vector3(0, 3, 0)) };
+    }) ?? [{ zone: 'g', idx: 0, tier: 0, side: '', center: center.clone(), f,
+      label: center.clone().add(new THREE.Vector3(0, H / 2 + 3, 0)) }];
+    center.y += offset(center.x, center.z);
     // 看台下方钢支架与斜撑，按每个轮廓截面裁切。
     for (let v = v0 + Math.min(1.5, D / 3); v < v1; v += 3.4) {
       const top = 0.3 + Math.min(rows, Math.floor((v - v0) / rowDepth) + 1) * rise - 0.12;
@@ -284,7 +325,7 @@ export function buildSilverstoneStands(scene, track, specs) {
         roof.computeVertexNormals();
         add(roofMaterial, roof);
       }
-      spec.roofBottom = bottom;
+      spec.roofBottom = baseY + offset(center.x, center.z) + bottom;
       for (let i = 0; i < poly.length; i++) {
         const [u, v] = poly[i], [nu, nv] = poly[(i + 1) % poly.length];
         if (curve && v === nv) continue;
@@ -300,16 +341,20 @@ export function buildSilverstoneStands(scene, track, specs) {
     for (const [material, geos] of batches) {
       const mesh = new THREE.Mesh(mergeGeometries(geos), material);
       mesh.castShadow = mesh.receiveShadow = true;
+      raise(mesh);
       scene.add(mesh);
     }
-    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), intersection = new THREE.Vector3();
-    const s = { spec, center, labelPos: center.clone().setY(H + 5), radius: Math.max(L, D) / 2 + 10, L, D, H, f,
-      parts: [{ front, f, L, D, H, pick: { arc: true } }], seats, base: baseF, rot: rotF, mesh: seatMesh, carpet: new THREE.Object3D(),
-      blocks: [{ zone: 'g', idx: 0, tier: 0, side: '', center: center.clone(), f, label: center.clone().setY(H + 3) }],
+    const normal = grade ? new THREE.Vector3(-grade.dx, 1, -grade.dz) : new THREE.Vector3(0, 1, 0);
+    const plane = new THREE.Plane(normal, 0), intersection = new THREE.Vector3();
+    const s = { spec, center, labelPos: center.clone().add(new THREE.Vector3(0, H / 2 + 5, 0)), radius: Math.max(L, D) / 2 + 10, L, D, H, f,
+      parts: [{ front: front.clone().setY(baseY + offset(front.x, front.z)), f, L, D, H,
+        noLimits: Boolean(spec.curveOutline || spec.curvePlan), pick: { arc: true } }],
+      seats, base: baseF, rot: rotF, mesh: seatMesh, carpet: new THREE.Object3D(),
+      blocks,
       pickSeat(ray) {
         let best = -1, bestDistance = Infinity;
         for (let r = 0; r < rows; r++) {
-          plane.constant = -(0.3 + (r + 1) * rise);
+          plane.constant = -(baseY + offset(0, 0) + 0.3 + (r + 1) * rise);
           if (!ray.intersectPlane(plane, intersection)) continue;
           for (let i = rowSpans[r][0]; i < rowSpans[r][1]; i++) {
             const dx = baseF[i * 3] - intersection.x, dz = baseF[i * 3 + 2] - intersection.z;
@@ -341,16 +386,24 @@ function groupFamilies(scene, stands, hitboxes, seatGeo, seatMat) {
     if (done.has(family)) continue;
     done.add(family);
     const members = groups.get(family).slice().sort((a, b) => a.spec.section.localeCompare(b.spec.section));
-    const id = `GB-${codes[family]}`, color = stand.spec.color;
-    const zones = Object.fromEntries(members.map((s) => [s.spec.section, {
-      name: `${s.spec.section} 区`, nameEn: `Section ${s.spec.section}`, color: s.spec.zones.g.color,
-      price: null, tag: '示意', tagEn: 'Schematic', note: '排号、座号为模型计数', noteEn: 'Rows and seats are model numbers',
-    }]));
-    const spec = { id, code: codes[family], name: `${family} 看台`, nameEn: `${family} Grandstand`, family, grouped: true,
+    const code = stand.spec.familyCode ?? codes[family];
+    const id = stand.spec.familyId ?? `GB-${code}`, color = stand.spec.color;
+    const zoneSpecs = new Map();
+    for (const s of members) for (const block of s.blocks) {
+      const zone = block.zone && block.zone !== 'g' ? block.zone : s.spec.section;
+      zoneSpecs.set(zone, {
+        name: `${zone} 区`, nameEn: `Section ${zone}`, color: s.spec.zones.g.color,
+        price: null, tag: '示意', tagEn: 'Schematic', note: '排号、座号为模型计数', noteEn: 'Rows and seats are model numbers',
+      });
+    }
+    const zones = Object.fromEntries([...zoneSpecs.entries()].sort(([a], [b]) => a.localeCompare(b)));
+    const [turns, turnsEn] = stand.spec.familyTurns ?? ['选择分区查看', 'Choose a section'];
+    const spec = { id, code, name: `${family} 看台`, nameEn: `${family} Grandstand`, family, grouped: true,
       type: 'seats', schematic: true, color, zones,
-      gate: '待核实', gateEn: 'Unverified', turns: '选择分区查看', turnsEn: 'Choose a section',
-      desc: '按看台汇总相邻分区。模型位置、分段、座位和出入口为示意，具体边界和顶棚仍需复核。',
-      descEn: 'Adjacent sections are grouped into one grandstand. Positions, section boundaries, seats and entrances are schematic; boundaries and roofs need verification.',
+      gate: stand.spec.familyTurns ? stand.spec.gate : '待核实',
+      gateEn: stand.spec.familyTurns ? stand.spec.gateEn : 'Unverified', turns, turnsEn,
+      desc: stand.spec.familyTurns ? stand.spec.desc : '按看台汇总相邻分区。模型位置、分段、座位和出入口为示意，具体边界和顶棚仍需复核。',
+      descEn: stand.spec.familyTurns ? stand.spec.descEn : 'Adjacent sections are grouped into one grandstand. Positions, section boundaries, seats and entrances are schematic; boundaries and roofs need verification.',
     };
     const center = members.reduce((sum, s) => sum.add(s.center), new THREE.Vector3()).multiplyScalar(1 / members.length);
     const radius = Math.max(...members.map(s => s.center.distanceTo(center) + s.radius));
@@ -358,9 +411,13 @@ function groupFamilies(scene, stands, hitboxes, seatGeo, seatMat) {
     const seats = [], base = [], rot = [], parts = [], blocks = [];
     members.forEach((s, index) => {
       offsets.push(total); total += s.seats.length;
-      for (let i = 0; i < s.seats.length; i++) seats.push({ ...s.seats[i], zone: s.spec.section, part: index });
-      base.push(...s.base); rot.push(...s.rot); parts.push(...s.parts);
-      blocks.push({ ...s.blocks[0], idx: index, zone: s.spec.section, roofBottom: s.spec.roofBottom });
+      for (const seat of s.seats) seats.push({ ...seat, zone: seat.section ?? s.spec.section, part: index });
+      for (const value of s.base) base.push(value);
+      for (const value of s.rot) rot.push(value);
+      parts.push(...s.parts);
+      for (const block of s.blocks) blocks.push({ ...block, idx: blocks.length,
+        zone: block.zone && block.zone !== 'g' ? block.zone : s.spec.section,
+        detail: block.detail ?? s.spec.sectionDetail, roofBottom: s.spec.roofBottom });
       scene.remove(s.mesh);
       for (const hit of hitboxes) if (hit.userData.standId === s.spec.id) hit.userData.standId = id;
     });
@@ -370,8 +427,9 @@ function groupFamilies(scene, stands, hitboxes, seatGeo, seatMat) {
     for (let i = 0; i < seats.length; i++) { mesh.setMatrixAt(i, seatMatrix(data, i, 1, 0, m)); mesh.setColorAt(i, seatColor(spec, seats[i], c)); }
     mesh.frustumCulled = false; scene.add(mesh);
     const H = Math.max(...members.map(s => s.H)), f = members[0].f.clone();
-    result.push({ spec, center, labelPos: center.clone().setY(H + 6), radius, L: radius * 2, D: Math.max(...members.map(s => s.D)), H, f,
-      parts, blocks, seats, base: baseF, rot: rotF, mesh, carpet: new THREE.Object3D(),
+    const sectionBlocks = Object.keys(zones).map(zone => blocks.find(b => b.zone === zone));
+    result.push({ spec, center, labelPos: center.clone().setY(Math.max(...members.map(s => s.labelPos.y)) + 1), radius, L: radius * 2, D: Math.max(...members.map(s => s.D)), H, f,
+      parts, blocks, sectionBlocks, seats, base: baseF, rot: rotF, mesh, carpet: new THREE.Object3D(),
       pickSeat(ray) {
         let best = -1, distance = Infinity;
         members.forEach((s, i) => {

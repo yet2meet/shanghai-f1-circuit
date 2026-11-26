@@ -93,7 +93,7 @@ export function makePath(pts, closed = false) {
 const fn = (v) => (typeof v === 'function' ? v : () => v);
 
 /** 沿路径的水平带状面（offA 在左，offB 在右，offA > offB） */
-export function ribbon(path, { offA, offB, y = 0, uv = 10, from = 0, to = null }) {
+export function ribbon(path, { offA, offB, y = 0, uv = 10, from = 0, to = null, heightAt, skip }) {
   const N = path.N;
   const last = to ?? (path.closed ? N : N - 1);
   const fa = fn(offA), fb = fn(offB);
@@ -102,11 +102,14 @@ export function ribbon(path, { offA, offB, y = 0, uv = 10, from = 0, to = null }
     const i = k % N;
     const p = path.pts[i], n = path.nor[i];
     const a = fa(i), b = fb(i);
-    pos.push(p.x + n.x * a, y, p.z + n.z * a, p.x + n.x * b, y, p.z + n.z * b);
+    for (const off of [a, b]) {
+      const x = p.x + n.x * off, z = p.z + n.z * off;
+      pos.push(x, (heightAt ? heightAt(x, z, i) : p.y) + y, z);
+    }
     nrm.push(0, 1, 0, 0, 1, 0);
     const u = (k < N ? path.dist[i] : path.total + path.dist[i]) / uv;
     uvs.push(u, 0, u, 1);
-    if (k > from) {
+    if (k > from && !skip?.(i) && !skip?.((k - 1) % N)) {
       const q = (k - from) * 2;
       idx.push(q - 2, q - 1, q, q - 1, q + 1, q);
     }
@@ -116,6 +119,7 @@ export function ribbon(path, { offA, offB, y = 0, uv = 10, from = 0, to = null }
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   g.setIndex(idx);
+  if (heightAt || path.pts.some(p => p.y !== 0)) g.computeVertexNormals();
   return g;
 }
 
@@ -131,7 +135,7 @@ export function wall(path, { off, h = 1.2, y = 0, from = 0, to = null, skip = nu
     if (skip && skip(i)) { prev = false; continue; }
     const p = path.pts[i], n = path.nor[i], o = fo(i);
     const x = p.x + n.x * o, z = p.z + n.z * o;
-    pos.push(x, y, z, x, y + h, z);
+    pos.push(x, p.y + y, z, x, p.y + y + h, z);
     const u = path.dist[i] / uv;
     uvs.push(u, 0, u, 1);
     if (prev) idx.push(q - 2, q - 1, q, q - 1, q + 1, q);

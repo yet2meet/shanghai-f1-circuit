@@ -11,6 +11,26 @@ const KEY = 'sic-circuit';
 
 export const CIRCUITS = [
   {
+    id: 'jp',
+    name: '铃鹿赛道', nameEn: 'Suzuka Circuit',
+    short: '铃鹿赛道', shortEn: 'Suzuka',
+    city: '铃鹿', cityEn: 'Suzuka', gp: '日本大奖赛', gpEn: 'Japanese Grand Prix',
+    km: '5.807', turns: 18, hasStands: true, hasSeats: true, unpriced: true,
+    load: () => import('./suzuka.js'),
+    dict: {
+      title: ['铃鹿赛道 · Suzuka Circuit', 'Suzuka Circuit · Formula 1 Japanese Grand Prix'],
+      brandName: ['铃鹿赛道', 'Suzuka Circuit'],
+      brandShort: ['铃鹿赛道', 'Suzuka'],
+      brandSub: ['Suzuka Circuit · 5.807 km · 18 弯', '铃鹿赛道 · 5.807 km · 18 turns'],
+      splashSub: ['FORMULA 1 · 日本大奖赛', 'FORMULA 1 · JAPANESE GRAND PRIX'],
+      listSub: ['2026 日本大奖赛 · 模型座席', '2026 Japanese Grand Prix · Schematic seating'],
+      footnote: [
+        '看台分区参考 2026 日本大奖赛，模型排号、座号及出入口为示意。<br/>地图数据 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 贡献者',
+        'Grandstand sections follow the 2026 Japanese Grand Prix. Model row and seat numbers and entrances are illustrative.<br/>Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+      ],
+    },
+  },
+  {
     id: 'gb',
     name: '银石赛道', nameEn: 'Silverstone Circuit',
     short: '银石赛道', shortEn: 'Silverstone',

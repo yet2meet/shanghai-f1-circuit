@@ -14,6 +14,7 @@ export const HW = 7.5; // 上海赛道半宽（真实路面宽约 13–15 m）�
  *   runoff   true = 弯道外侧有草坪与砂石缓冲区（专用赛道）；false = 街道赛，护墙紧贴路面
  *   ads      护墙标识带：[[背景色, 文字色, 文字], …]
  *   kerbCurv 弯道路肩的曲率阈值
+ *   setTrackHeights(points) 在横向宽度采样后设置渲染用标高
  *   finishAsphalt(material, path, uvMetres) 材质生成后的赛道专用设置
  *   skipEdgeLine(i, side, track) 按采样点和侧别省略赛道白边线
  *   skipPitSideKerb(i, track) 额外清除维修通道一侧的路肩
@@ -22,13 +23,22 @@ export function buildTrack(scene, cfg) {
   const { points: TRACK_POINTS, pit: OSM_PIT, hw = 7.5, runoff = true, ads, kerbCurv = 0.005, pitSide = 'right' } = cfg;
   const pitLeft = pitSide === 'left'; // 维修通道在行驶方向的左侧还是右侧（上海在右，滨海湾在左）
   const HW = hw;
-  const WG = runoff ? 6 : 1.7; // 护墙离路面边缘的距离：专用赛道外有缓冲区，街道赛护墙贴着路面
-  const curve = new THREE.CatmullRomCurve3(TRACK_POINTS.map(([x, n]) => V(x, n)), true, 'centripetal');
+  const WG = cfg.wallGap ?? (runoff ? 6 : 1.7); // 护墙离路面边缘的距离
+  const source = TRACK_POINTS.map(([x, n, y]) => V(x, n, y));
+  const curve = new THREE.CatmullRomCurve3(source, true, 'centripetal');
   const N = 1600;
   curve.arcLengthDivisions = 20000; // 默认 200 段对 5.4 km 太粗，会让采样点间距从 0.2 m 到 14 m 不等
   const pts = curve.getSpacedPoints(N);
   pts.pop();
+  if (cfg.elevationSmoothing) {
+    const raw = pts.map(p => p.y);
+    const heights = smooth(smooth(raw, cfg.elevationSmoothing), cfg.elevationSmoothing);
+    pts.forEach((p, i) => { p.y = heights[i]; });
+  }
+  const widths = cfg.halfWidth ? smooth(pts.map(p => cfg.halfWidth(p, source)), 6) : null;
+  cfg.setTrackHeights?.(pts);
   const path = makePath(pts, true);
+  const widthAt = i => widths?.[i] ?? HW;
 
   // 有符号曲率（负 = 右弯）
   const raw = new Float32Array(N);
@@ -48,6 +58,9 @@ export function buildTrack(scene, cfg) {
     if (k < 0) gl[i] = w; else gr[i] = w;
   }
   const gwL = smooth(gl, 22), gwR = smooth(gr, 22);
+  if (cfg.runoffScale !== undefined) for (const buffer of [gwL, gwR]) {
+    for (let i = 0; i < N; i++) buffer[i] *= cfg.runoffScale;
+  }
 
   // 维修区一侧（大直道东侧）不设护墙
   // 维修区一侧：离真实维修通道 24 m 以内的右侧不设护墙（维修墙由 venue.js 单独生成）
@@ -69,12 +82,12 @@ export function buildTrack(scene, cfg) {
     const P = pts[k], n = path.nor[k];
     if (_pitD(P.x, P.z) < 24) nearPit[k] = 1;
     const ps = pitLeft ? 1 : -1;
-    if (_pitD(P.x + n.x * ps * (HW + 1), P.z + n.z * ps * (HW + 1)) < 7.5) kerbPit[k] = 1;
+    if (_pitD(P.x + n.x * ps * (widthAt(k) + 1), P.z + n.z * ps * (widthAt(k) + 1)) < 7.5) kerbPit[k] = 1;
   }
   const pitZone = (k) => nearPit[k] === 1;
 
   const track = {
-    path, pts, tan: path.tan, nor: path.nor, dist: path.dist, total: path.total, N, curv, gwL, gwR, pitZone, pitLeft, hw: HW,
+    path, pts, tan: path.tan, nor: path.nor, dist: path.dist, total: path.total, N, curv, gwL, gwR, pitZone, pitLeft, hw: HW, widthAt,
     nearest(x, z) {
       let best = 0, bd = Infinity;
       for (let i = 0; i < N; i++) {
@@ -95,6 +108,9 @@ export function buildTrack(scene, cfg) {
 
   const g = new THREE.Group();
   g.name = 'track';
+  cfg.prepareGround?.(track);
+  const skipScenery = i => Boolean(cfg.skipScenery?.(i % N, track));
+  const off = (side, extra, widths) => i => side * (widthAt(i) + extra + (widths?.[i] ?? 0));
 
   // 修剪草坪带（夜间被灯光照亮）
   const vergeTex = canvasTex(256, 64, (c, w, h) => {
@@ -102,15 +118,16 @@ export function buildTrack(scene, cfg) {
     c.fillStyle = cfg.vergeColor || '#92c375'; c.fillRect(0, 0, w / 2, h);
   }, [1, 1]);
   const verge = new THREE.Mesh(
-    ribbon(path, { offA: (i) => HW + 13 + gwL[i], offB: (i) => -(HW + 13 + gwR[i]), y: 0.05, uv: 24 }),
+    ribbon(path, { offA: off(1, 13, gwL), offB: off(-1, 13, gwR), y: 0.05, uv: 24, heightAt: cfg.groundHeight, skip: skipScenery }),
     groundDetail(floodlit(new THREE.MeshStandardMaterial({ map: vergeTex, roughness: 1 }), 0.25), 'grass', { size: 3, k: 0.8 })
   );
-  if (runoff) g.add(asGround(verge, -1.5));
+  if (runoff && !cfg.groundHeight) g.add(asGround(verge, -1.5));
+  else { verge.geometry.dispose(); verge.material.map.dispose(); verge.material.dispose(); }
 
   // 砂石缓冲区
   const gravelMat = groundDetail(std('#dcc189', { roughness: 1 }, 0.3), 'gravel', { size: 2.2, k: 1.0, mk: 0.14 });
-  const gravelL = new THREE.Mesh(ribbon(path, { offA: (i) => HW + 3.5 + gwL[i], offB: HW + 3.5, y: 0.1 }), gravelMat);
-  const gravelR = new THREE.Mesh(ribbon(path, { offA: -(HW + 3.5), offB: (i) => -(HW + 3.5 + gwR[i]), y: 0.1 }), gravelMat);
+  const gravelL = new THREE.Mesh(ribbon(path, { offA: off(1, 3.5, gwL), offB: off(1, 3.5), y: 0.1, heightAt: cfg.groundHeight, skip: skipScenery }), gravelMat);
+  const gravelR = new THREE.Mesh(ribbon(path, { offA: off(-1, 3.5), offB: off(-1, 3.5, gwR), y: 0.1, heightAt: cfg.groundHeight, skip: skipScenery }), gravelMat);
   if (runoff) g.add(asGround(gravelL, -1.4), asGround(gravelR, -1.4));
 
   // 沥青路面
@@ -128,17 +145,18 @@ export function buildTrack(scene, cfg) {
   }, [1, 1]);
   const uvMetres = 16;
   const asphalt = new THREE.Mesh(
-    ribbon(path, { offA: HW, offB: -HW, y: 0.16, uv: uvMetres }),
+    ribbon(path, { offA: widthAt, offB: off(-1, 0), y: 0.16, uv: uvMetres }),
     groundDetail(floodlit(new THREE.MeshStandardMaterial({ map: asphaltTex, roughness: 0.92 }), 0.55), 'asphalt', { size: 3, k: 0.7, mk: 0.12 })
   );
   asphalt.name = 'circuit-asphalt';
   cfg.finishAsphalt?.(asphalt.material, path, uvMetres);
   g.add(asGround(asphalt, -1.2));
+  if (cfg.groundHeight) asphalt.material.depthWrite = true;
 
   // 白色边线
   const lineMat = std('#f4f4f4', { roughness: 0.6 }, 0.9);
   for (const side of [1, -1]) {
-    const offsets = side > 0 ? { offA: HW - 0.35, offB: HW - 0.8 } : { offA: -(HW - 0.8), offB: -(HW - 0.35) };
+    const offsets = side > 0 ? { offA: off(1, -0.35), offB: off(1, -0.8) } : { offA: off(-1, -0.8), offB: off(-1, -0.35) };
     if (!cfg.skipEdgeLine) {
       g.add(asGround(new THREE.Mesh(ribbon(path, { ...offsets, y: 0.2 }), lineMat), -1.05));
       continue;
@@ -173,13 +191,13 @@ export function buildTrack(scene, cfg) {
     while (isKerb((e + 1) % N) && e - k < N) e++;
     const a = Math.max(k - 4, start), b = e + 4;
     for (const side of [1, -1]) {
-      const offs = side > 0 ? { offA: HW + 2.2, offB: HW - 0.2 } : { offA: -(HW - 0.2), offB: -(HW + 2.2) };
+      const offs = side > 0 ? { offA: off(1, 2.2), offB: off(1, -0.2) } : { offA: off(-1, -0.2), offB: off(-1, 2.2) };
       if ((side > 0) !== pitLeft) { // 不是维修区一侧：整段路肩
-        g.add(asGround(new THREE.Mesh(ribbon(path, { ...offs, y: 0.18, uv: 5, from: a, to: b }), kerbMat), -1.0));
+        g.add(asGround(new THREE.Mesh(ribbon(path, { ...offs, y: 0.18, uv: 5, from: a, to: b, skip: skipScenery }), kerbMat), -1.0));
         continue;
       }
       // 维修区一侧：跳过与维修通道重叠的部分
-      const skip = (i) => kerbPit[i % N] || cfg.skipPitSideKerb?.(i % N, track);
+      const skip = (i) => skipScenery(i) || kerbPit[i % N] || cfg.skipPitSideKerb?.(i % N, track);
       for (let s0 = a; s0 <= b; s0++) {
         if (skip(s0)) continue;
         let s1 = s0;
@@ -205,24 +223,25 @@ export function buildTrack(scene, cfg) {
     });
   }, [1, 1]);
   const wallMat = floodlit(new THREE.MeshStandardMaterial({ map: adTex, roughness: 0.6, side: THREE.DoubleSide }), 0.6);
-  const wl = new THREE.Mesh(wall(path, { off: (i) => HW + WG + gwL[i], h: 1.3, to: N, skip: pitLeft ? pitZone : null, uv: 64 }), wallMat);
+  const barrierSkip = (i, side) => skipScenery(i) || ((side > 0) === pitLeft && pitZone(i));
+  const wl = new THREE.Mesh(wall(path, { off: off(1, WG, gwL), h: 1.3, to: N, skip: i => barrierSkip(i, 1), uv: 64 }), wallMat);
   // 右侧护墙从赛道看过去方向相反，贴图反向，文字才不会镜像
-  const wr = new THREE.Mesh(wall(path, { off: (i) => -(HW + WG + gwR[i]), h: 1.3, to: N, skip: pitLeft ? null : pitZone, uv: -64 }), wallMat);
+  const wr = new THREE.Mesh(wall(path, { off: off(-1, WG, gwR), h: 1.3, to: N, skip: i => barrierSkip(i, -1), uv: -64 }), wallMat);
   wl.castShadow = wr.castShadow = true;
   g.add(wl, wr);
   // 防护网：菱形金属网纹理（每米 4 格）+ 每 4 m 一根立柱 + 顶部钢缆
   const meshTex = fenceTexture();
   const fenceMat = new THREE.MeshStandardMaterial({ color: '#c3c9d1', alphaMap: meshTex, transparent: true, side: THREE.DoubleSide, depthWrite: false, metalness: 0.6, roughness: 0.4 });
   const FH = 3.4;
-  g.add(new THREE.Mesh(wall(path, { off: (i) => HW + WG + 0.2 + gwL[i], h: FH, y: 1.3, to: N, skip: pitLeft ? pitZone : null, uv: 1 }), fenceMat));
-  g.add(new THREE.Mesh(wall(path, { off: (i) => -(HW + WG + 0.2 + gwR[i]), h: FH, y: 1.3, to: N, skip: pitLeft ? null : pitZone, uv: 1 }), fenceMat));
+  g.add(new THREE.Mesh(wall(path, { off: off(1, WG + 0.2, gwL), h: FH, y: 1.3, to: N, skip: i => barrierSkip(i, 1), uv: 1 }), fenceMat));
+  g.add(new THREE.Mesh(wall(path, { off: off(-1, WG + 0.2, gwR), h: FH, y: 1.3, to: N, skip: i => barrierSkip(i, -1), uv: 1 }), fenceMat));
   const postSpots = [];
   const step = Math.max(1, Math.round(4 / (path.total / N)));
   for (let k = 0; k < N; k += step) {
     for (const side of [1, -1]) {
-      if ((side > 0) === pitLeft && pitZone(k)) continue;
-      const off = side * (HW + WG + 0.3 + (side > 0 ? gwL[k] : gwR[k]));
-      postSpots.push(pts[k].x + path.nor[k].x * off, pts[k].z + path.nor[k].z * off, Math.atan2(path.tan[k].x, path.tan[k].z) + (side > 0 ? 0 : Math.PI));
+      if (barrierSkip(k, side)) continue;
+      const lateral = off(side, WG + 0.3, side > 0 ? gwL : gwR)(k);
+      postSpots.push(pts[k].x + path.nor[k].x * lateral, pts[k].y, pts[k].z + path.nor[k].z * lateral, Math.atan2(path.tan[k].x, path.tan[k].z) + (side > 0 ? 0 : Math.PI));
     }
   }
   // 立柱带一段向赛道内侧倾斜的顶部（真实防护网的“鹅颈”造型）
@@ -230,11 +249,11 @@ export function buildTrack(scene, cfg) {
     new THREE.BoxGeometry(0.12, FH + 1.3, 0.12).translate(0, (FH + 1.3) / 2, 0),
     new THREE.BoxGeometry(0.1, 0.1, 1.0).rotateX(-0.6).translate(0, FH + 1.55, -0.4),
   ]);
-  const posts = new THREE.InstancedMesh(postGeo, std('#8d949c', { roughness: 0.4, metalness: 0.7 }, 0.3), postSpots.length / 3);
+  const posts = new THREE.InstancedMesh(postGeo, std('#8d949c', { roughness: 0.4, metalness: 0.7 }, 0.3), postSpots.length / 4);
   const pm = new THREE.Matrix4(), pq = new THREE.Quaternion(), pp = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), upv = new THREE.Vector3(0, 1, 0);
-  for (let i = 0; i < postSpots.length / 3; i++) {
-    pq.setFromAxisAngle(upv, postSpots[i * 3 + 2] + Math.PI / 2);
-    posts.setMatrixAt(i, pm.compose(pp.set(postSpots[i * 3], 0, postSpots[i * 3 + 1]), pq, one));
+  for (let i = 0; i < postSpots.length / 4; i++) {
+    pq.setFromAxisAngle(upv, postSpots[i * 4 + 3] + Math.PI / 2);
+    posts.setMatrixAt(i, pm.compose(pp.fromArray(postSpots, i * 4), pq, one));
   }
   posts.castShadow = true;
   g.add(posts);
@@ -244,12 +263,12 @@ export function buildTrack(scene, cfg) {
     c.fillStyle = 'rgba(255,255,255,0.08)'; c.fillRect(0, 2, w, 2);
   }, [1, 1]);
   const beltMat = floodlit(new THREE.MeshStandardMaterial({ map: beltTex, roughness: 0.8, side: THREE.DoubleSide }), 0.5);
-  const beltL = (k) => gwL[k] < 8 || (pitLeft && pitZone(k)), beltR = (k) => gwR[k] < 8 || (!pitLeft && pitZone(k));
+  const beltL = (k) => gwL[k] < 8 || barrierSkip(k, 1), beltR = (k) => gwR[k] < 8 || barrierSkip(k, -1);
   if (runoff) {
-    g.add(new THREE.Mesh(wall(path, { off: (i) => HW + 5.2 + gwL[i], h: 1.1, to: N, skip: beltL, uv: 12 }), beltMat));
-    g.add(new THREE.Mesh(wall(path, { off: (i) => -(HW + 5.2 + gwR[i]), h: 1.1, to: N, skip: beltR, uv: 12 }), beltMat));
+    g.add(new THREE.Mesh(wall(path, { off: off(1, WG - 0.8, gwL), h: 1.1, to: N, skip: beltL, uv: 12 }), beltMat));
+    g.add(new THREE.Mesh(wall(path, { off: off(-1, WG - 0.8, gwR), h: 1.1, to: N, skip: beltR, uv: 12 }), beltMat));
     const topMat = std('#202226', { roughness: 0.9 }, 0.1);
-    g.add(new THREE.Mesh(ribbon(path, { offA: (i) => HW + 6 + gwL[i], offB: (i) => HW + 5.2 + gwL[i], y: 1.1, to: N }), topMat));
+    g.add(new THREE.Mesh(ribbon(path, { offA: off(1, WG, gwL), offB: off(1, WG - 0.8, gwL), y: 1.1, to: N, skip: skipScenery }), topMat));
   }
 
   scene.add(g);

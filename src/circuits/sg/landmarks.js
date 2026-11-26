@@ -156,19 +156,22 @@ export function buildSupertrees(scene, groveFlat) {
  * 左右交错、前后相隔 8 m、杆位在线后 8 m，杆位在哪一侧官方资料没有写，取 1 号左弯的内侧（左）示意。
  * 弯道里的车位（曲率大处）不画，所以实际画出的车位数可能少于 22。
  */
-export function buildStartGrid(scene, track, turns, frac = 0.28, { startTurn = 19, slots: slotCount = 22 } = {}) {
+export function buildStartGrid(scene, track, turns, frac = 0.28, { startTurn = 19, slots: slotCount = 22, startIndex } = {}) {
   const N = track.N, mPer = track.total / N, hw = track.hw;
   const idx = (n) => { const [, x, y] = turns.find((t) => t[0] === n); return track.nearest(x, -y); };
   const a = idx(startTurn), b = idx(1);
-  const iL = (a + Math.round(((b - a + N) % N) * frac)) % N;
+  const iL = startIndex ?? (a + Math.round(((b - a + N) % N) * frac)) % N;
   const up = new THREE.Vector3(0, 1, 0);
   const basis = (k, lateral, y) => {
     const P = track.pts[k], nor = track.nor[k], tan = track.tan[k];
-    return new THREE.Matrix4().makeBasis(nor, up, tan).setPosition(P.x + nor.x * lateral, y, P.z + nor.z * lateral);
+    const previous = track.pts[(k + N - 1) % N], next = track.pts[(k + 1) % N];
+    const slope = next.clone().sub(previous).normalize();
+    const normal = slope.y ? slope.clone().cross(nor) : up;
+    return new THREE.Matrix4().makeBasis(nor, normal, slope.y ? slope : tan).setPosition(P.x + nor.x * lateral, P.y + y, P.z + nor.z * lateral);
   };
   // 起终点线：黑白格
   const checker = canvasTexLocal(128, 32, (c, w, h) => { for (let i = 0; i < 16; i++) for (let j = 0; j < 4; j++) { c.fillStyle = (i + j) % 2 ? '#111' : '#f5f5f5'; c.fillRect((i * w) / 16, (j * h) / 4, w / 16, h / 4); } });
-  const line = new THREE.Mesh(new THREE.PlaneGeometry(2 * hw - 0.9, 1.2).rotateX(-Math.PI / 2), floodlit(new THREE.MeshStandardMaterial({ map: checker, roughness: 0.6, transparent: true, depthWrite: false }), 0.9));
+  const line = new THREE.Mesh(new THREE.PlaneGeometry(2 * (track.widthAt?.(iL) ?? hw) - 0.9, 1.2).rotateX(-Math.PI / 2), floodlit(new THREE.MeshStandardMaterial({ map: checker, roughness: 0.6, transparent: true, depthWrite: false }), 0.9));
   line.applyMatrix4(basis(iL, 0, 0.215)); line.renderOrder = -0.9;
   scene.add(line);
   // 发车格：白色外框

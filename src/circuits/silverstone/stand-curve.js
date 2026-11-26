@@ -13,30 +13,56 @@ const outlines = {
 const cross = (a, b) => a.x * b.z - a.z * b.x;
 const mix = THREE.MathUtils.lerp;
 
-/** 和上海的弧形看台一样，以前沿弧长定位每道剖面，向后排取局部法线。 */
-export function curvedStandPlan(spec) {
-  const outline = outlines[spec.turnsEn];
-  if (!outline) return;
-  const [front, back] = outline.map(edge => edge.map(i => V(...spec.polygon[i])));
-  const curve = new THREE.CatmullRomCurve3(front, false, 'centripetal');
-  // 对 OSM 折线做等距平滑，固定两端，避免长短边交界产生反弯。
-  const count = Math.max(2, Math.ceil(curve.getLength() / 0.85));
-  let samples = curve.getSpacedPoints(count);
-  for (let pass = 0; pass < 18; pass++) {
+function smoothEdge(points, regular) {
+  const source = new THREE.CatmullRomCurve3(points, false, 'centripetal');
+  const count = Math.max(2, Math.ceil(source.getLength() / 0.85));
+  let samples = source.getSpacedPoints(count);
+  for (let pass = 0; pass < (regular ? 34 : 18); pass++) {
     samples = samples.map((p, i, line) => i === 0 || i === count ? p
       : p.clone().multiplyScalar(0.5).addScaledVector(line[i - 1], 0.25).addScaledVector(line[i + 1], 0.25));
   }
-  const centerline = new THREE.CatmullRomCurve3(samples, false, 'centripetal');
-  centerline.arcLengthDivisions = count * 5;
+  const intervals = Math.max(2, Math.ceil(count / 8));
+  const controls = regular ? Array.from({ length: intervals + 1 },
+    (_, i) => samples[Math.round(i * count / intervals)]) : samples;
+  const curve = new THREE.CatmullRomCurve3(controls, false, 'centripetal');
+  curve.arcLengthDivisions = count * 5;
+  return { curve, count };
+}
+
+/** 和上海的弧形看台一样，以前沿弧长定位每道剖面，向后排取局部法线。 */
+export function curvedStandPlan(spec) {
+  const outline = spec.curveOutline ?? outlines[spec.turnsEn];
+  if (!outline) return;
+  const [front, back] = outline.map(edge => edge.map(i => V(...spec.polygon[i])));
+  const { curve: centerline, count } = smoothEdge(front, spec.regularSweep);
   const L = centerline.getLength();
   const end = centerline.getTangentAt(0.5);
   const inward = new THREE.Vector3(-end.z, 0, end.x);
   const towardsBack = back[Math.floor(back.length / 2)].clone().sub(centerline.getPointAt(0.5));
   const side = inward.dot(towardsBack) >= 0 ? 1 : -1;
+  const step = L / Math.ceil(L / 0.72);
+  const stations = (a, b) => {
+    const cuts = [a];
+    for (let i = Math.floor(a / step) + 1; i * step < b - 1e-6; i++) cuts.push(i * step);
+    cuts.push(b);
+    return cuts;
+  };
   const outwardAt = u => {
     const t = centerline.getTangentAt(u / L);
     return new THREE.Vector3(-side * t.z, 0, side * t.x);
   };
+  if (spec.regularSweep) {
+    const { curve: rear } = smoothEdge(back, true);
+    const widths = Array.from({ length: 21 }, (_, i) => {
+      const t = i / 20;
+      return rear.getPointAt(t).sub(centerline.getPointAt(t)).dot(outwardAt(t * L));
+    }).sort((a, b) => a - b);
+    const D = spec.depth ?? widths[10];
+    return {
+      L, D, side, stations, outwardAt, depthAt: () => D,
+      at: (u, v, y = 0) => centerline.getPointAt(u / L).addScaledVector(outwardAt(u), v).setY(y),
+    };
+  }
   const rearAngles = back.slice(0, -1).map((p, i) => back[i + 1].clone().sub(p));
   let depths = Array.from({ length: count + 1 }, (_, i) => {
     const p = centerline.getPointAt(i / count), normal = outwardAt(L * i / count);
@@ -52,6 +78,7 @@ export function curvedStandPlan(spec) {
     return distance;
   });
   const widths = depths.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!widths.length) return;
   const D = widths[Math.floor(widths.length / 2)];
   depths = depths.map((depth, i) => {
     if (Number.isFinite(depth)) return depth;
@@ -77,13 +104,6 @@ export function curvedStandPlan(spec) {
   };
   const at = (u, v, y = 0) => {
     return centerline.getPointAt(u / L).addScaledVector(outwardAt(u), v * depthAt(u) / D).setY(y);
-  };
-  const step = L / Math.ceil(L / 0.72);
-  const stations = (a, b) => {
-    const cuts = [a];
-    for (let i = Math.floor(a / step) + 1; i * step < b - 1e-6; i++) cuts.push(i * step);
-    cuts.push(b);
-    return cuts;
   };
   return { L, D, side, at, stations, outwardAt, depthAt };
 }

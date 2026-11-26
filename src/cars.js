@@ -32,13 +32,13 @@ export function buildCars(scene, track, teams = TEAMS) {
   // ── 行车线：按真实弧长等距重采样（2 m），再把“弯中靠内”的偏移和走线本身都平滑，
   // 车头方向取行车线的切线并插值，过弯是连续的圆弧而不是折线 ──
   const N = track.N, M = Math.round(track.total / 2), step = track.total / M;
-  const cx = new Float32Array(M), cz = new Float32Array(M), nx = new Float32Array(M), nz = new Float32Array(M), kk = new Float32Array(M);
+  const cx = new Float32Array(M), cy = new Float32Array(M), cz = new Float32Array(M), nx = new Float32Array(M), nz = new Float32Array(M), kk = new Float32Array(M);
   for (let m = 0, i = 0; m < M; m++) {
     const s = m * step;
     while (i < N - 1 && track.dist[i + 1] <= s) i++;
     const j = (i + 1) % N, d0 = track.dist[i], d1 = j ? track.dist[j] : track.total, t = (s - d0) / Math.max(1e-6, d1 - d0);
     const a = track.pts[i], b = track.pts[j];
-    cx[m] = a.x + (b.x - a.x) * t; cz[m] = a.z + (b.z - a.z) * t;
+    cx[m] = a.x + (b.x - a.x) * t; cy[m] = a.y + (b.y - a.y) * t; cz[m] = a.z + (b.z - a.z) * t;
     const na = track.nor[i], nb = track.nor[j], L = Math.hypot(na.x + (nb.x - na.x) * t, na.z + (nb.z - na.z) * t) || 1;
     nx[m] = (na.x + (nb.x - na.x) * t) / L; nz[m] = (na.z + (nb.z - na.z) * t) / L;
     kk[m] = track.curv[i] + (track.curv[j] - track.curv[i]) * t;
@@ -60,10 +60,10 @@ export function buildCars(scene, track, teams = TEAMS) {
   const rx = new Float32Array(M), rz = new Float32Array(M), lx = new Float32Array(M), lz = new Float32Array(M);
   for (let m = 0; m < M; m++) { rx[m] = cx[m] + nx[m] * off[m]; rz[m] = cz[m] + nz[m] * off[m]; }
   const sx = blur(rx, 2, 2), sz = blur(rz, 2, 2);           // 走线本身再轻微平滑，去掉残余折角
-  const tx = new Float32Array(M), tz = new Float32Array(M);
+  const tx = new Float32Array(M), ty = new Float32Array(M), tz = new Float32Array(M);
   for (let m = 0; m < M; m++) {
     const a = (m - 1 + M) % M, b = (m + 1) % M, dx = sx[b] - sx[a], dz = sz[b] - sz[a], L = Math.hypot(dx, dz) || 1;
-    tx[m] = dx / L; tz[m] = dz / L; lx[m] = -tz[m]; lz[m] = tx[m];
+    tx[m] = dx / L; ty[m] = (cy[b] - cy[a]) / L; tz[m] = dz / L; lx[m] = -tz[m]; lz[m] = tx[m];
   }
   // 车道法向与赛道法向同侧
   if (lx[0] * nx[0] + lz[0] * nz[0] < 0) for (let m = 0; m < M; m++) { lx[m] = -lx[m]; lz[m] = -lz[m]; }
@@ -72,8 +72,8 @@ export function buildCars(scene, track, teams = TEAMS) {
     const f = (((s % track.total) + track.total) % track.total) / step;
     const m = Math.floor(f) % M, n2 = (m + 1) % M, t = f - Math.floor(f);
     const L = lane * (laneK[m] + (laneK[n2] - laneK[m]) * t);
-    out.set(sx[m] + (sx[n2] - sx[m]) * t + (lx[m] + (lx[n2] - lx[m]) * t) * L, 0.2, sz[m] + (sz[n2] - sz[m]) * t + (lz[m] + (lz[n2] - lz[m]) * t) * L);
-    dir.set(tx[m] + (tx[n2] - tx[m]) * t, 0, tz[m] + (tz[n2] - tz[m]) * t).normalize();
+    out.set(sx[m] + (sx[n2] - sx[m]) * t + (lx[m] + (lx[n2] - lx[m]) * t) * L, cy[m] + (cy[n2] - cy[m]) * t + 0.2, sz[m] + (sz[n2] - sz[m]) * t + (lz[m] + (lz[n2] - lz[m]) * t) * L);
+    dir.set(tx[m] + (tx[n2] - tx[m]) * t, ty[m] + (ty[n2] - ty[m]) * t, tz[m] + (tz[n2] - tz[m]) * t).normalize();
     return Math.abs(kS[m]);
   };
   return {
@@ -90,7 +90,7 @@ export function buildCars(scene, track, teams = TEAMS) {
         // 车头方向：切线；再做一点时间上的平滑，防止掉帧时跳角
         const yaw = Math.atan2(fwd.x, fwd.z);
         c.yaw = c.yaw === undefined ? yaw : c.yaw + Math.atan2(Math.sin(yaw - c.yaw), Math.cos(yaw - c.yaw)) * Math.min(1, dt * 14);
-        c.g.rotation.set(0, c.yaw, 0);
+        c.g.rotation.set(-Math.asin(fwd.y), c.yaw, 0, 'YXZ');
         c.g.updateMatrix();
       }
       cars.forEach((c, i) => { for (const im of all) im.setMatrixAt(i, c.g.matrix); });

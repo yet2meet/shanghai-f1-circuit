@@ -3,7 +3,7 @@
 import { t, L, onLang, isEn } from './i18n.js';
 import { circuit, shareUrl } from './circuits/index.js';
 
-const URL = shareUrl('https://shanghai-f1-circuit.pages.dev/'); // 非默认赛道带 ?c=，朋友打开直接看到同一条赛道
+const BASE_URL = 'https://shanghai-f1-circuit.pages.dev/';
 const ICON = '<svg viewBox="0 0 24 24"><path d="M12 15V4M8 7.5 12 3.5l4 4M6 11H5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7a1 1 0 0 0-1-1h-1"/></svg>';
 const wechat = /MicroMessenger/i.test(navigator.userAgent);
 const canCopyImage = !wechat && !!(navigator.clipboard && window.ClipboardItem);
@@ -12,7 +12,7 @@ const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.on
 function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
 
 /** 海报 1080×1440：标题 + 当前画面 + 二维码 */
-async function makePoster(snapshot) {
+async function makePoster(snapshot, link) {
   const [{ default: qrcode }, logo] = await Promise.all([import('qrcode-generator'), loadImg('./brand/f1-logo-white.svg')]);
   const W = 1080, H = 1440, c = document.createElement('canvas');
   c.width = W; c.height = H;
@@ -33,7 +33,7 @@ async function makePoster(snapshot) {
   g.restore();
   g.strokeStyle = 'rgba(0,0,0,0.06)'; g.lineWidth = 2; rr(g, sx, sy, sw, sh, 36); g.stroke();
   // 底部：二维码 + 说明
-  const qr = qrcode(0, 'M'); qr.addData(URL); qr.make();
+  const qr = qrcode(0, 'M'); qr.addData(link); qr.make();
   const n = qr.getModuleCount(), qs = 220, cell = qs / n, qx = W - 72 - qs - 24, qy = 1190;
   g.fillStyle = '#fff'; rr(g, qx - 24, qy - 24, qs + 48, qs + 48, 28); g.fill();
   g.fillStyle = '#1d1d1f';
@@ -73,6 +73,7 @@ export function initShare(toast, snapshot) {
   let sheet = null;
   b.addEventListener('click', async () => {
     if (sheet) return;
+    const link = shareUrl(BASE_URL);
     sheet = document.createElement('div');
     sheet.id = 'shareSheet';
     sheet.innerHTML = `<div class="ss-card glass" role="dialog" aria-modal="true">
@@ -90,13 +91,13 @@ export function initShare(toast, snapshot) {
     addEventListener('keydown', onKey, true);
     sheet.addEventListener('click', (e) => { if (e.target === sheet || e.target.closest('.ss-close')) close(); });
     sheet.querySelector('.ss-link').addEventListener('click', async () => {
-      toast((await copyText(URL)) ? t('网址已复制，可以粘贴发送给朋友', 'Link copied — paste it to share') : URL);
+      toast((await copyText(link)) ? t('网址已复制，可以粘贴发送给朋友', 'Link copied — paste it to share') : link);
     });
     requestAnimationFrame(() => sheet?.classList.add('on'));
     setTimeout(() => sheet?.classList.add('on'), 30);
 
     let poster;
-    try { poster = await makePoster(snapshot); } catch (e) { console.error(e); }
+    try { poster = await makePoster(snapshot, link); } catch (e) { console.error(e); }
     if (!sheet) return;
     const box = sheet.querySelector('.ss-img');
     if (!poster) { box.innerHTML = `<div class="ss-wait">${t('海报生成失败，可以先复制网址', 'Could not create the poster — copy the link instead')}</div>`; return; }

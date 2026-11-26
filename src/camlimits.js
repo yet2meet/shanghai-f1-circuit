@@ -8,7 +8,7 @@ const EYE = 1.7;                  // 镜头离地面、看台坡面、草坡的�
 const ROOF = 8;                   // 离建筑屋面、顶棚上沿的最小高度（太贴近只会看到一片屋面）
 
 /** data：{ buildings, venue } —— 当前赛道的 OSM 建筑与场地红线（由赛道档案提供） */
-export function buildCamLimits(stands, { buildings: OSM_BUILDINGS, venue: OSM_VENUE }) {
+export function buildCamLimits(stands, { buildings: OSM_BUILDINGS, venue: OSM_VENUE, groundAt }) {
   // 场地范围：OSM 赛车场红线的外接矩形
   let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
   for (let i = 0; i < OSM_VENUE.length; i += 2) {
@@ -65,7 +65,8 @@ export function buildCamLimits(stands, { buildings: OSM_BUILDINGS, venue: OSM_VE
       const x = x0 + (i + 0.5) * CELL - front.x, z = z0 + (j + 0.5) * CELL - front.z;
       const u = x * rx + z * rz, d = -(x * f.x + z * f.z);
       if (Math.abs(u) > L / 2 + pad || d < -pad || d > D + back) continue;
-      raiseTop(j * W + i, q(flat ? Hh : Math.max(0.5, (Math.min(D, Math.max(0, d)) / D) * Hh)), flat ? 1 : 0);
+      const height = flat ? Hh : Math.max(0.5, (Math.min(D, Math.max(0, d)) / D) * Hh);
+      raiseTop(j * W + i, q(height + (groundAt ? front.y : 0)), flat ? 1 : 0);
     }
   }
 
@@ -78,7 +79,8 @@ export function buildCamLimits(stands, { buildings: OSM_BUILDINGS, venue: OSM_VE
     }
   };
   /** 镜头允许的最低高度：地面 / 坡面 + 人眼高度，建筑屋面 + 8 m */
-  const minYAt = (x, z) => { let m = EYE; near(x, z, (k) => { const v = top[k] / Q + (bld[k] ? ROOF : EYE); if (v > m) m = v; }); return m; };
+  const groundEye = (x, z) => (groundAt?.(x, z) ?? 0) + EYE;
+  const minYAt = (x, z) => { let m = groundEye(x, z); near(x, z, (k) => { if (top[k]) m = Math.max(m, top[k] / Q + (bld[k] ? ROOF : EYE)); }); return m; };
   /** 镜头所在位置的悬空构件（顶棚 / 翼）：返回 [下沿, 上沿]，没有则 null */
   const bandAt = (x, z) => {
     let lo = 255, hi = 0;
@@ -109,7 +111,7 @@ export function buildCamLimits(stands, { buildings: OSM_BUILDINGS, venue: OSM_VE
       }
     }
     // 离地（含看台坡面、草坡、建筑屋面）不低于人眼高度：碰到楼就从楼顶越过，而不是穿进去
-    const minY = collide ? minYAt(p.x, p.z) : EYE;
+    const minY = collide ? minYAt(p.x, p.z) : groundEye(p.x, p.z);
     if (p.y < minY) { p.y = minY; moved = true; }
     return moved;
   }
