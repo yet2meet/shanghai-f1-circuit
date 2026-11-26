@@ -279,7 +279,6 @@ body[data-mode='seats'] .panel.left { transform: translateX(calc(-100% - 40px));
 .sp-bar { height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
 .sp-bar i { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, #ff453a, #ffd60a); transform-origin: left; transform: scaleX(0); transition: transform 0.22s ease-out; }
 #splash.ready .sp-bar i { transition: none; }
-.sp-note { margin: 10px 0 0; color: rgba(235, 235, 245, 0.68); font-size: 12px; line-height: 1.45; text-align: center; }
 #splash.failed .sp-step { color: #ff6961; }
 .label b { font-weight: inherit; }
 @media (max-width: 860px) {

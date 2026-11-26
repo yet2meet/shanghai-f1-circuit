@@ -1,6 +1,6 @@
 // 先画出轻量地球，渲染器和初始赛道的模块并行载入。
 import { applyStatic, initLang, t } from './i18n.js';
-import { CIRCUITS, CURRENT, circuit, firstStartup, rememberCircuit, switchCircuit } from './circuits/index.js';
+import { CIRCUITS, CURRENT, circuit, rememberCircuit, switchCircuit } from './circuits/index.js';
 import { startSplash, startTransition } from './splash.js';
 import { initSwitcher } from './switcher.js';
 
@@ -8,35 +8,42 @@ const initialCircuit = circuit;
 const loading = Promise.all([import('./main.js'), initialCircuit.load().then((mod) => mod.default)]);
 initLang();
 document.body.dataset.circuit = CURRENT;
-const splash = startSplash(firstStartup);
+const splash = startSplash();
 splash.progress(1 / 24, t('正在加载渲染引擎', 'Loading render engine'));
 
 async function start() {
   const [{ prefetchCircuit, prepareCircuit, mountCircuit }, initialProfile] = await loading;
-  const others = CIRCUITS.filter((target) => target.id !== initialCircuit.id);
-  const prefetchOthers = () => others.forEach((target) => { void prefetchCircuit(target).catch(() => {}); });
-  const targets = firstStartup ? [initialCircuit, ...others] : [initialCircuit];
-  // 首场占用较大的进度区间，其余区间按实际预备的场馆数分配。
-  const milestones = targets.length === 1 ? [2, 23]
-    : [2, ...targets.map((_, i) => 12 + i * 11 / (targets.length - 1))];
-  let entry;
-  if (firstStartup) prefetchOthers();
-  for (const [i, target] of targets.entries()) {
-    const startAt = milestones[i], span = milestones[i + 1] - startAt;
-    splash.progress(startAt / 24, t(`正在准备${target.city}`, `Preparing ${target.cityEn}`));
-    try {
-      const prepared = await prepareCircuit(target, (p, label) => {
-        splash.progress((startAt + p * span) / 24, label);
-      }, i === 0 ? initialProfile : undefined);
-      if (i === 0) entry = prepared;
-    } catch (error) {
-      if (i === 0) throw error;
-      console.warn(`Could not prepare ${target.id}`, error);
-    }
-  }
+  splash.progress(2 / 24, t(`正在准备${initialCircuit.city}`, `Preparing ${initialCircuit.cityEn}`));
+  let entry = await prepareCircuit(initialCircuit, (p, label) => {
+    splash.progress((2 + p * 21) / 24, label);
+  }, initialProfile);
 
   let active = mountCircuit(entry);
   let switching = true;
+  const others = CIRCUITS.filter((target) => target.id !== initialCircuit.id);
+  let prefetchPending = false;
+
+  // 空闲时逐个载入模块。场景搭建和预渲染留给切换时的共享渲染器。
+  function schedulePrefetch() {
+    if (switching || prefetchPending || !others.length) return;
+    prefetchPending = true;
+    const loadNext = async () => {
+      try {
+        if (!switching) await prefetchCircuit(others.shift());
+      } catch {
+        // 单个模块失败后继续预取队列。
+      } finally {
+        prefetchPending = false;
+        schedulePrefetch();
+      }
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(loadNext, { timeout: 2500 });
+    } else {
+      window.setTimeout(loadNext, 250);
+    }
+  }
+
   const renderSwitcher = initSwitcher(async (id) => {
     if (switching || id === CURRENT) return;
     switching = true;
@@ -73,6 +80,7 @@ async function start() {
     } finally {
       document.body.classList.remove('leaving');
       switching = false;
+      schedulePrefetch();
     }
   });
 
@@ -80,7 +88,8 @@ async function start() {
   rememberCircuit();
   active.reveal({ startup: true, guide: true });
   switching = false;
-  if (!firstStartup) prefetchOthers();
+  await splash.closed;
+  schedulePrefetch();
 }
 
 start().catch((error) => {

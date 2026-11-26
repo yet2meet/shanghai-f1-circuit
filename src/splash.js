@@ -78,9 +78,10 @@ function run(root, { fromId, toId }) {
     phase: origin ? 'depart' : 'spin', t: 0, w: 0, h: 0, dpr: 1, last: null, alpha: origin ? 0 : 1 };
   let turn, raf = 0, done = false, ready = false, shown = 0;
   let previous = performance.now();
-  let resolveCover, resolveReveal;
+  let resolveCover, resolveReveal, resolveClosed;
   const covered = origin ? new Promise((resolve) => { resolveCover = resolve; }) : Promise.resolve();
   const revealed = new Promise((resolve) => { resolveReveal = resolve; });
+  const closed = new Promise((resolve) => { resolveClosed = resolve; });
 
   function resize() {
     S.dpr = Math.min(devicePixelRatio || 1, 1.5);
@@ -253,6 +254,7 @@ function run(root, { fromId, toId }) {
     removeEventListener('resize', resize);
     document.removeEventListener('visibilitychange', onVisibility);
     root.remove();
+    resolveClosed();
   }
 
   addEventListener('resize', resize);
@@ -270,6 +272,7 @@ function run(root, { fromId, toId }) {
 
   return {
     covered,
+    closed,
     progress(value, label) {
       if (ready || done) return;
       const next = Math.min(STEP_MAX, Math.floor(value * total + 1e-6));
@@ -290,15 +293,8 @@ function run(root, { fromId, toId }) {
   };
 }
 
-export function startSplash(first) {
-  const root = document.getElementById('splash');
-  if (first) {
-    const hint = root.querySelector('.sp-note');
-    hint.textContent = t('围场小队正在做赛前准备，第一次发车要多等一小会儿',
-      'The paddock crew is getting ready. The first start takes a little longer.');
-    hint.hidden = false;
-  }
-  return run(root, { toId: CURRENT });
+export function startSplash() {
+  return run(document.getElementById('splash'), { toId: CURRENT });
 }
 
 export function startTransition(fromId, target) {

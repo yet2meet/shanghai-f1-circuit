@@ -98,8 +98,6 @@ function storedCircuit() {
   try { return localStorage.getItem(KEY); } catch { return null; }
 }
 
-export const firstStartup = !byId[storedCircuit()];
-
 function resolve() {
   try {
     const q = new URLSearchParams(location.search).get('c');
