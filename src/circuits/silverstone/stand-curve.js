@@ -1,13 +1,16 @@
 import * as THREE from 'three';
 import { V } from '../../util.js';
 
-// 两条边各取连续的测绘点。Landostand A 的后缘去掉临时看台模块之间的凹口。
+// 两条边各取连续的测绘点。Landostand A 后缘保留四个退台区段。
 const outlines = {
   'Landostand A': [[10, 11, 12, 13, 0], [8, 7, 5, 3, 1]],
   'Club Corner': [[6, 7, 8, 9, 10, 11], [5, 4, 3, 2, 1, 0]],
   'Woodcote A': [[3, 2, 1], [4, 5, 0]],
   'Luffield': [[1, 2, 3, 4, 5], [0, 8, 7, 6]],
   'International Paddock': [[0, 6, 5], [1, 2, 3, 4]],
+};
+const steppedRear = {
+  'Landostand A': [[8, 7], [6, 5], [4, 3], [2, 1]],
 };
 
 const cross = (a, b) => a.x * b.z - a.z * b.x;
@@ -63,6 +66,41 @@ export function curvedStandPlan(spec) {
       at: (u, v, y = 0) => centerline.getPointAt(u / L).addScaledVector(outwardAt(u), v).setY(y),
     };
   }
+  const rearBays = steppedRear[spec.turnsEn];
+  if (rearBays) {
+    const samples = Math.max(2, count * 4);
+    const project = point => {
+      let bestU = 0, bestDist = Infinity;
+      for (let i = 0; i <= samples; i++) {
+        const u = L * i / samples;
+        const d = centerline.getPointAt(u / L).distanceToSquared(point);
+        if (d < bestDist) { bestDist = d; bestU = u; }
+      }
+      const span = L / samples;
+      let lo = Math.max(0, bestU - span), hi = Math.min(L, bestU + span);
+      for (let iter = 0; iter < 12; iter++) {
+        const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3;
+        if (centerline.getPointAt(m1 / L).distanceToSquared(point) < centerline.getPointAt(m2 / L).distanceToSquared(point)) hi = m2;
+        else lo = m1;
+      }
+      const u = (lo + hi) / 2;
+      const v = point.clone().sub(centerline.getPointAt(u / L)).dot(outwardAt(u));
+      return { u, v };
+    };
+    const raw = rearBays.map(([aIdx, bIdx]) => {
+      const a = project(V(...spec.polygon[aIdx])), b = project(V(...spec.polygon[bIdx]));
+      return { uStart: Math.min(a.u, b.u), uEnd: Math.max(a.u, b.u), depth: (a.v + b.v) / 2 };
+    }).sort((a, b) => a.uStart - b.uStart);
+    const bays = raw.map((bay, i) => ({
+      from: i === 0 ? 0 : (raw[i - 1].uEnd + bay.uStart) / 2,
+      to: i === raw.length - 1 ? L : (bay.uEnd + raw[i + 1].uStart) / 2,
+      depth: bay.depth,
+    }));
+    const D = Math.max(...bays.map(b => b.depth));
+    const depthAt = u => (bays.find(b => u <= b.to + 1e-6) ?? bays.at(-1)).depth;
+    const at = (u, v, y = 0) => centerline.getPointAt(u / L).addScaledVector(outwardAt(u), v).setY(y);
+    return { L, D, side, at, stations, outwardAt, depthAt, constantDepth: true, bays };
+  }
   const rearAngles = back.slice(0, -1).map((p, i) => back[i + 1].clone().sub(p));
   let depths = Array.from({ length: count + 1 }, (_, i) => {
     const p = centerline.getPointAt(i / count), normal = outwardAt(L * i / count);
@@ -88,11 +126,6 @@ export function curvedStandPlan(spec) {
   });
   for (let pass = 0; pass < 16; pass++) {
     depths = depths.map((depth, i, line) => 0.5 * depth + 0.25 * (line[Math.max(0, i - 1)] + line[Math.min(count, i + 1)]));
-  }
-  if (spec.turnsEn === 'Landostand A') {
-    // 原始后边界的逐段退台收成一条连续弧，保留窄端的测绘宽度。
-    const start = Math.round(count * 0.64), endDepth = depths.at(-1);
-    depths = depths.map((depth, i) => i <= start ? depth : mix(depths[start], endDepth, ((i - start) / (count - start)) ** 2));
   }
   const depthAt = u => {
     const fraction = (u / L) * count;

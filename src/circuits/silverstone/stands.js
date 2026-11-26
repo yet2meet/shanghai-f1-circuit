@@ -63,12 +63,30 @@ export function buildSilverstoneStands(scene, track, specs) {
     let outward = new THREE.Vector3(-axis.z, 0, axis.x);
     const nearest = track.pts[track.nearest(origin.x, origin.z)];
     if (outward.dot(origin.clone().sub(nearest)) < 0) { axis.negate(); outward.negate(); }
-    const poly = curve ? [[0, 0], [curve.L, 0], [curve.L, curve.D], [0, curve.D]]
-      : world.map(p => { const d = p.clone().sub(origin); return [d.dot(axis), d.dot(outward)]; });
-    const u0 = Math.min(...poly.map(p => p[0])), u1 = Math.max(...poly.map(p => p[0]));
-    const v0 = Math.min(...poly.map(p => p[1])), v1 = Math.max(...poly.map(p => p[1]));
-    const L = u1 - u0, D = v1 - v0, rows = Math.max(1, Math.floor(D / ROW_D));
-    const rowDepth = D / rows, rise = 0.33, H = 0.3 + rows * rise;
+    let poly, u0, u1, v0, v1, L, D, rows, rowDepth, bays = null;
+    if (curve?.bays) {
+      rows = Math.max(1, Math.floor(curve.D / ROW_D));
+      rowDepth = curve.D / rows;
+      bays = curve.bays.map(b => {
+        const bayRows = Math.min(rows, Math.max(1, Math.round(b.depth / rowDepth)));
+        return { from: b.from, to: b.to, rows: bayRows, depth: bayRows * rowDepth };
+      });
+      poly = [[0, 0], [curve.L, 0]];
+      for (let i = bays.length - 1; i >= 0; i--) {
+        poly.push([bays[i].to, bays[i].depth], [bays[i].from, bays[i].depth]);
+      }
+      u0 = 0; u1 = curve.L; v0 = 0; v1 = Math.max(...bays.map(b => b.depth));
+      L = u1 - u0; D = v1 - v0; rowDepth = D / rows;
+    } else {
+      poly = curve ? [[0, 0], [curve.L, 0], [curve.L, curve.D], [0, curve.D]]
+        : world.map(p => { const d = p.clone().sub(origin); return [d.dot(axis), d.dot(outward)]; });
+      u0 = Math.min(...poly.map(p => p[0])); u1 = Math.max(...poly.map(p => p[0]));
+      v0 = Math.min(...poly.map(p => p[1])); v1 = Math.max(...poly.map(p => p[1]));
+      L = u1 - u0; D = v1 - v0; rows = Math.max(1, Math.floor(D / ROW_D));
+      rowDepth = D / rows;
+    }
+    const rise = 0.33, H = 0.3 + rows * rise;
+    const bayAt = u => bays.find(b => u <= b.to + 1e-6) ?? bays.at(-1);
     const centers = [];
     for (let u = u0 + 16; u < u1 - 5; u += 16) centers.push(u);
     const entryRows = vomRows(rows);
@@ -159,8 +177,11 @@ export function buildSilverstoneStands(scene, track, specs) {
       const lo = v0 + r * rowDepth, hi = v0 + (r + 1) * rowDepth, y = 0.3 + (r + 1) * rise;
       const inEntryRow = entryRows.has(r);
       const rowSegments = inEntryRow ? expanded : segments;
-      for (const [a, b, aisle] of rowSegments) {
-        if (!aisle || (inEntryRow && inEntrance((a + b) / 2))) {
+      const rowBounds = bays ? spans(poly, (lo + hi) / 2) : [[u0, u1]];
+      for (const [left, right] of rowBounds) for (const [segA, segB, aisle] of rowSegments) {
+        const a = Math.max(left, segA), b = Math.min(right, segB);
+        if (b - a < 1e-5) continue;
+        if (!aisle || (inEntryRow && inEntrance((segA + segB) / 2))) {
           const thickness = Math.min(y, rise + 0.13);
           slab(a, b, lo, hi, thickness, y - thickness);
         } else stair(a, b, lo, y);
@@ -185,7 +206,7 @@ export function buildSilverstoneStands(scene, track, specs) {
           const d = (length - (count - 1) * PITCH) / 2 + k * PITCH;
           while (distances[j] < d) j++;
           const u = THREE.MathUtils.lerp(stations[j - 1], stations[j], (d - distances[j - 1]) / (distances[j] - distances[j - 1]));
-          if (curve && r % 2 === 1 && rowDepth * curve.depthAt(u) / D < 0.52) continue;
+          if (curve && !curve.constantDepth && r % 2 === 1 && rowDepth * curve.depthAt(u) / D < 0.52) continue;
           if (roofSupports.some(post => Math.abs(u - post.u) < 0.34 && Math.abs(v - post.postV) < 0.33)) continue;
           const p = toWorld(u, v);
           base.push(p.x, baseY + offset(p.x, p.z) + y, p.z); rot.push(angle(u));
@@ -200,7 +221,7 @@ export function buildSilverstoneStands(scene, track, specs) {
     if (!seats.length) continue;
     const entrancesGeometry = { vomBox: [], vomHole: [], vomFloor: [] };
     for (const u of entranceCenters) {
-      const depth = curve ? rowDepth * curve.depthAt(u) / D : rowDepth;
+      const depth = curve && !curve.constantDepth ? rowDepth * curve.depthAt(u) / D : rowDepth;
       const frame = Array.from({ length: rows }, (_, r) => ({
         z: (r - entryStart + 0.5) * depth,
         y: 0.3 + (r + 1) * rise,
@@ -239,10 +260,13 @@ export function buildSilverstoneStands(scene, track, specs) {
     const hitCount = curve ? Math.ceil(L / 10) : 1;
     for (let i = 0; i < hitCount; i++) {
       const u = u0 + L * (i + 0.5) / hitCount;
-      const depth = toWorld(u, v0).distanceTo(toWorld(u, v1));
-      const hit = new THREE.Mesh(new THREE.BoxGeometry(L / hitCount + (curve ? 1 : 0), H + 3, depth),
+      const bay = bays ? bayAt(u) : null;
+      const localV1 = bay ? v0 + bay.depth : v1;
+      const localH = bay ? 0.3 + bay.rows * rise : H;
+      const depth = toWorld(u, v0).distanceTo(toWorld(u, localV1));
+      const hit = new THREE.Mesh(new THREE.BoxGeometry(L / hitCount + (curve ? 1 : 0), localH + 3, depth),
         new THREE.MeshBasicMaterial({ visible: false }));
-      hit.position.copy(toWorld(u, (v0 + v1) / 2, baseY + (H + 3) / 2));
+      hit.position.copy(toWorld(u, (v0 + localV1) / 2, baseY + (localH + 3) / 2));
       hit.position.y += offset(hit.position.x, hit.position.z);
       hit.rotation.y = angle(u);
       hit.userData.standId = spec.id;
@@ -284,8 +308,38 @@ export function buildSilverstoneStands(scene, track, specs) {
         beam(railMaterial, toWorld(u, v, y), toWorld(u, v, y + 1.03), 0.055);
       }
     };
-    const backV = v1 - Math.min(0.15, D / 4);
-    for (const [a, b] of spans(poly, backV)) if (b - a > 0.35) rail(a + 0.075, b - 0.075, backV, H);
+    if (bays) {
+      for (let i = 0; i < bays.length; i++) {
+        const { from, to, rows: bayRows, depth: bayDepth } = bays[i];
+        const bayBackV = v0 + bayDepth - Math.min(0.15, bayDepth / 4);
+        const bayH = 0.3 + bayRows * rise;
+        const startU = i > 0 && bays[i - 1].rows > bayRows ? from - 0.075 : from + 0.075;
+        const endU = i + 1 < bays.length && bays[i + 1].rows > bayRows ? to + 0.075 : to - 0.075;
+        if (endU - startU > 0.35) rail(startU, endU, bayBackV, bayH);
+      }
+      for (let i = 0; i + 1 < bays.length; i++) {
+        if (bays[i].rows === bays[i + 1].rows) continue;
+        const hi = bays[i].rows > bays[i + 1].rows ? bays[i] : bays[i + 1];
+        const lo = hi === bays[i] ? bays[i + 1] : bays[i];
+        const uRail = hi === bays[i] ? bays[i].to - 0.075 : bays[i].to + 0.075;
+        const vLo = v0 + lo.depth - Math.min(0.15, lo.depth / 4);
+        const vHi = v0 + hi.depth - Math.min(0.15, hi.depth / 4);
+        const yLo = 0.3 + lo.rows * rise, yHi = 0.3 + hi.rows * rise;
+        for (const h of [0.5, 1.03]) {
+          beam(railMaterial, toWorld(uRail, vLo, yLo + h), toWorld(uRail, vHi, yHi + h), 0.048);
+        }
+        const postCount = Math.max(1, Math.ceil((vHi - vLo) / 2));
+        for (let k = 0; k <= postCount; k++) {
+          const t = k / postCount, v = THREE.MathUtils.lerp(vLo, vHi, t);
+          const stepTop = 0.3 + Math.min(hi.rows, Math.floor((v - v0) / rowDepth) + 1) * rise;
+          const railTop = THREE.MathUtils.lerp(yLo, yHi, t) + 1.03;
+          beam(railMaterial, toWorld(uRail, v, stepTop), toWorld(uRail, v, railTop), 0.055);
+        }
+      }
+    } else {
+      const backV = v1 - Math.min(0.15, D / 4);
+      for (const [a, b] of spans(poly, backV)) if (b - a > 0.35) rail(a + 0.075, b - 0.075, backV, H);
+    }
     const frontV = v0 + Math.min(0.11, D / 4);
     for (const [left, right] of spans(poly, frontV)) for (const [a, b, aisle] of segments) {
       const start = Math.max(left + 0.075, a), end = Math.min(right - 0.075, b);
