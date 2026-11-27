@@ -371,7 +371,16 @@ export function mountCircuit(entry) {
 
   // ───────────────────────── UI：列表 ─────────────────────────
   const minPrice = (spec) => { const prices = Object.values(spec.zones).map((z) => z.price).filter((p) => p != null); return prices.length ? Math.min(...prices) : null; };
+  const hasRange = (spec) => {
+    const zs = Object.values(spec.zones);
+    return new Set(zs.map((z) => z.price).filter((p) => p != null)).size > 1 || zs.some((z) => z.priceRange);
+  };
   const mainColor = (spec) => spec.color || Object.values(spec.zones).slice(-1)[0].color;
+  const badgeCls = (code) => code.includes(' ') ? 'badge stack' : code.length >= 4 ? 'badge xs' : code.length === 3 ? 'badge sm' : 'badge';
+  const badgeHtml = (code) => {
+    const i = code.indexOf(' ');
+    return i > 0 ? `${code.slice(0, i)}<small>${code.slice(i + 1)}</small>` : code;
+  };
   const X_ICON = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>';
 
   const listEl = $('#listItems');
@@ -379,11 +388,11 @@ export function mountCircuit(entry) {
   function renderList() {
     listEl.innerHTML = '';
     STANDS.forEach((spec) => {
-      const multi = Object.keys(spec.zones).length > 1;
+      const multi = hasRange(spec);
       const b = document.createElement('button');
       b.className = 'item';
       b.dataset.id = spec.id;
-      b.innerHTML = `<div class="badge" style="background:${mainColor(spec)}">${spec.code}</div>
+      b.innerHTML = `<div class="${badgeCls(spec.code)}" style="background:${mainColor(spec)}">${badgeHtml(spec.code)}</div>
         <div class="item-main"><b>${L(spec, 'name')}</b><span>${L(spec, 'turns')}</span></div>
         ${circuit.unpriced ? '' : `<div class="item-price">${fmtPrice(minPrice(spec))}<small>${multi ? tr('起 · ', 'from · ') : ''}${tr('三日票', '3-day')}</small></div>`}`;
       b.onclick = () => selectStand(spec.id);
@@ -396,7 +405,7 @@ export function mountCircuit(entry) {
   const labelsEl = $('#labels');
   labelsEl.replaceChildren();
   const labels = [];
-  const standLabel = (s) => `<em style="background:${mainColor(s.spec)}">${s.spec.code}</em><b>${L(s.spec, 'name')}</b>${circuit.unpriced ? '' : `<span>${fmtPrice(minPrice(s.spec))}${Object.keys(s.spec.zones).length > 1 ? fromTxt() : ''}</span>`}`;
+  const standLabel = (s) => `<em${s.spec.code.length >= 3 ? ' class="wide"' : ''} style="background:${mainColor(s.spec)}">${s.spec.code}</em><b>${L(s.spec, 'name')}</b>${circuit.unpriced ? '' : `<span>${fmtPrice(minPrice(s.spec))}${hasRange(s.spec) ? fromTxt() : ''}</span>`}`;
   stands.forEach((s) => {
     const el = document.createElement('div');
     el.className = 'label';
@@ -458,8 +467,14 @@ export function mountCircuit(entry) {
       const [u, v] = toMM(track.pts[i].x + track.nor[i].x * MM.turnOffset * k, track.pts[i].z + track.nor[i].z * MM.turnOffset * k);
       return `<text class="mm-turn" x="${u.toFixed(0)}" y="${(v + 14).toFixed(0)}">${n}</text>`;
     }).join('');
+    const mmText = (code) => {
+      const i = code.indexOf(' ');
+      if (i > 0) return `<text class="mm-stack"><tspan x="0" y="-4">${code.slice(0, i)}</tspan><tspan x="0" y="26">${code.slice(i + 1)}</tspan></text>`;
+      if (code.length >= 3) return `<text class="mm-sm" y="12">${code}</text>`;
+      return `<text y="17">${code}</text>`;
+    };
     const marks = stands.map((s) => { const [u, v] = toMM(s.center.x, s.center.z); return `<g class="mm-stand" data-id="${s.spec.id}" transform="translate(${u.toFixed(0)} ${v.toFixed(0)})">
-        <title>${L(s.spec, 'name')}</title><circle class="mm-ring" r="62"/><circle r="46" fill="${mainColor(s.spec)}"/><text y="17">${s.spec.code}</text></g>`; }).join('');
+        <title>${L(s.spec, 'name')}</title><circle class="mm-ring" r="62"/><circle r="46" fill="${mainColor(s.spec)}"/>${mmText(s.spec.code)}</g>`; }).join('');
     const el = $('#minimap');
     const [nu, nv] = toMM(TRUE_NORTH[0], -TRUE_NORTH[1]);
     const mmW = x1 - x0, mmH = z1 - z0;
@@ -529,7 +544,7 @@ export function mountCircuit(entry) {
     if (!s) { detail.classList.add('hidden'); return; }
     detail.classList.remove('hidden');
     const spec = s.spec;
-    const head = `<div class="d-head"><div class="badge" style="background:${mainColor(spec)}">${spec.code}</div>
+    const head = `<div class="d-head"><div class="${badgeCls(spec.code)}" style="background:${mainColor(spec)}">${badgeHtml(spec.code)}</div>
       <div><h2>${L(spec, 'name')}</h2><p>${L(spec, 'turns')}</p></div>
       <button class="close" data-act="close" aria-label="${tr('关闭', 'Close')}">${X_ICON}</button></div>`;
 
@@ -584,7 +599,7 @@ export function mountCircuit(entry) {
       <p class="d-desc">${L(spec, 'desc')}</p>
       <div class="stats">${stats}</div>
       ${spec.grouped ? `<div class="sec-title">${tr('选择分区', 'Choose a section')}</div><div class="chips wide">${(s.sectionBlocks ?? s.blocks).map((b) => `<button class="chip" data-act="group-zone" data-b="${b.idx}" style="--c:${spec.zones[b.zone].color}">${L(spec.zones[b.zone], 'name')}</button>`).join('')}</div>` : ''}
-      ${spec.grouped || circuit.unpriced ? '' : `<div class="sec-title">${tr('票价 · 三日票', 'Prices · 3-day pass')}</div>${Object.values(spec.zones).map(zoneRow).join('')}`}
+      ${circuit.unpriced ? '' : `<div class="sec-title">${tr('票价 · 三日票', 'Prices · 3-day pass')}</div>${Object.values(spec.zones).map(zoneRow).join('')}`}
       <div class="actions">
         ${spec.type === 'seats'
           ? `<button class="btn primary" data-act="seats"><svg viewBox="0 0 24 24"><path d="M6 11V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4M4 13a2 2 0 0 1 4 0v2h8v-2a2 2 0 0 1 4 0v5H4zM7 18v2M17 18v2"/></svg>${tr('进入选座', 'Choose seats')}</button>`

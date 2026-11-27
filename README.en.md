@@ -27,7 +27,7 @@ Explore Shanghai International Circuit, Marina Bay Street Circuit, Silverstone, 
 
 ## Silverstone scene
 
-- **Grandstands** cover 28 named sections from the 2025 event map, organized into 18 groups. Open Landostand or another group to browse its sections and modeled seats. Ticket prices are unavailable in the viewer.
+- **Grandstands** cover 28 named sections from the 2025 event map, organized into 18 groups. Open Landostand or another group to browse its sections and modeled seats. Silverstone uses dynamic pricing with no single fixed price list (2025/2026 3-day stands ranged roughly £430–£909+, with Landostand at £474 in 2025 and from £539 in 2026).
 - **Pit facilities** include the Silverstone Wing, 41 garage bays, the fast lane, pit stop bays, and consoles for ten teams.
 - **Venue landmarks** include the Stowe infield, Porsche Experience Centre, the Hilton, and the venue's bridges.
 
@@ -37,7 +37,7 @@ Explore Shanghai International Circuit, Marina Bay Street Circuit, Silverstone, 
 - **Grandstands and pit facilities.** Browse 19 grandstand groups and their seating sections, such as A1 and A2 within Grandstand A. The main straight is flanked by the pit lane, team garages, and paddock.
 - **Entrance routes.** Walks from the Main Gate and Hotel Gate join near Welcome Square and continue over the footbridge, past the Circuit Wheel, and through GP Square to the main grandstand.
 
-Seat numbers, entrances, pavement dimensions, tree locations, pit facilities, and bridge details are illustrative. [Suzuka sources and modeling notes](tools/suzuka-sources.md)
+Seat numbers, entrances, pavement dimensions, tree locations, pit facilities, and bridge details are illustrative; 3-day reference prices follow Suzuka's published 2027 Japanese GP advance adult rates (JPY, tax incl.). [Suzuka sources and modeling notes](tools/suzuka-sources.md)
 
 ## Monza scene
 
@@ -45,7 +45,7 @@ Seat numbers, entrances, pavement dimensions, tree locations, pit facilities, an
 - **Spectator gates and grandstands.** The 2026 spectator guide identifies five recommended spectator entrances at Vedano, Santa Maria, Costa Bassa, Lesmo, and Mirabello. Open one grandstand group to find its sections and modeled seats.
 - **Pits.** Eleven teams follow the FIA pit drawing. The model includes the fast lane, the pit wall, pit stop markings, and furnished garages.
 
-Bridge clearances, unmeasured stand boundaries, walkway connections, garage details and individual seats are illustrative. [Monza sources and modeling notes](tools/monza-sources.md)
+Bridge clearances, unmeasured stand boundaries, walkway connections, garage details and individual seats are illustrative; 3-day reference prices follow Monza's official 2026 Italian GP price list (EUR, VAT incl.). [Monza sources and modeling notes](tools/monza-sources.md)
 
 ## Run locally
 

@@ -77,6 +77,45 @@ const data = {
   R: ['最后一弯', 'Final Corner', '#857b8f'],
   S: ['最后一弯家庭区', 'Final Corner · family seating', '#a8847f'],
 };
+// 2027 Japanese GP 3-day advance prices (JPY, tax incl., suzukacircuit.jp).
+const prices = {
+  V1: [112000, true, 'V1-1 JP¥117,000 · V1-2 JP¥112,000（2027 官网价）', 'V1-1 JP¥117,000 · V1-2 JP¥112,000 (2027 official)'],
+  V2: [120000, true, 'V2-1–V2-9：JP¥120,000–280,000（2027 官网价）', 'V2-1 to V2-9: JP¥120,000–280,000 (2027 official)'],
+  VIP: [650000, true, 'VIP Suite Premium 起步价（2027 官网价）', 'VIP Suite Premium starting price (2027 official)'],
+  A1: [75600, true, 'A1-1 JP¥75,600 · A1-2 JP¥88,400（2027 官网价）', 'A1-1 JP¥75,600 · A1-2 JP¥88,400 (2027 official)'],
+  A2: [103200, false],
+  B1: [75400, false],
+  B2: [89600, true, 'B2-1 JP¥89,600 · B2-2 JP¥97,000 · B2-3 JP¥108,000', 'B2-1 JP¥89,600 · B2-2 JP¥97,000 · B2-3 JP¥108,000'],
+  C: [48400, true, '正价 JP¥48,400–58,000（2027 官网价）', 'Standard JP¥48,400–58,000 (2027 official)'],
+  'D-1': [36400, false], 'D-2': [36400, false], 'D-3': [60600, false], 'D-4': [60600, false],
+  'D-5': [60600, false], 'D-6': [44600, false], 'D-7': [65800, false], 'D-8': [65800, false],
+  'E-1': [42000, false], 'E-2': [55000, false], 'E-3': [46200, false], 'E-4': [46200, false],
+  'E-5': [60600, false], 'E-6': [60600, false],
+  'G-1': [30000, false], 'G-2': [24000, false], 'G-3': [37200, false], 'G-4': [42000, false], 'G-5': [32200, false],
+  H: [46000, false],
+  'I-1': [56400, false], 'I-2': [58800, false], 'I-3': [58800, false], 'I-4': [58800, false], 'I-5': [58800, false], 'I-6': [54000, false],
+  J: [22000, false, '西区自由席通票（2027 官网价）', 'West Area Ticket (2027 official)'],
+  L: [22000, false, '西区自由席通票（2027 官网价）', 'West Area Ticket (2027 official)'],
+  N: [22000, false, '西区自由席通票（2027 官网价）', 'West Area Ticket (2027 official)'],
+  M: [40000, true, 'JP¥40,000–45,000（2027 官网价）', 'JP¥40,000–45,000 (2027 official)'],
+  'M-1': [45000, false], 'M-2': [45000, false], 'M-3': [40000, false],
+  'O-1': [29000, true, '下层 JP¥29,000 · 上层 JP¥34,600', 'Lower JP¥29,000 · Upper JP¥34,600'],
+  'O-2': [29000, true, '下层 JP¥29,000 · 上层 JP¥34,600', 'Lower JP¥29,000 · Upper JP¥34,600'],
+  'P-1': [40000, false], 'P-2': [37000, false], 'P-3': [34000, false],
+  Q1: [63200, true, 'Q1-1 JP¥63,200 · Q1-2 JP¥75,000', 'Q1-1 JP¥63,200 · Q1-2 JP¥75,000'],
+  Q2: [105600, false],
+  R: [72000, false],
+  S: [72000, true, '家庭区成人票（2027 官网价）', 'Family Seat adult (2027 official)'],
+};
+function suzukaZone(zoneKey, color) {
+  const [price = null, priceRange = false, noteZh, noteEn] = prices[zoneKey] ?? [];
+  return {
+    name: `${zoneKey} 区`, nameEn: `Section ${zoneKey}`, color, price, priceRange,
+    tag: '2027 官网价', tagEn: '2027 official',
+    note: noteZh ?? '2027 日本大奖赛成人三日预售价（含税）',
+    noteEn: noteEn ?? '2027 Japanese GP 3-day advance price (tax incl.)',
+  };
+}
 
 function sliceStand(plan, a, b) {
   const start = a * plan.L, end = b * plan.L;
@@ -252,9 +291,12 @@ export function standPlans(track, items) {
     const baseY = raisedTier ? 4.2 : 0.18;
     const subsectionBounds = id === v2.id ? v2Bands.flatMap(([setback, depth, cuts, sections]) =>
       seatSections(sections, cuts, { depth: [setback, setback + depth] })) : subsections;
+    const zoneKey = section ?? gSections[id] ?? code;
+    const familyZoneKeys = [...new Set([zoneKey, ...(subsections?.filter(s => s.zoneByName).map(s => s.name) ?? [])])];
+    const familyZones = family ? Object.fromEntries(familyZoneKeys.map(k => [k, suzukaZone(k, color)])) : undefined;
     return {
       id: `JP-${id}`, code, family, familyCode: family, familyId: `JP-${family}`,
-      section: section ?? gSections[id] ?? code, sectionDetail, subsectionBounds,
+      section: zoneKey, sectionDetail, subsectionBounds, familyZones,
       westboundSubsections: code === 'V1' || code === 'V2',
       familyTurns: familyApproaches[family] ?? (family ? [turns, turnsEn] : undefined),
       polygon: straightPolygon ?? pad, curvePlan, baseY, pad, raisedTier,
@@ -265,8 +307,7 @@ export function standPlans(track, items) {
         : '根据赛事票区图与地图轮廓建模。排数、座位、出入口和标高为示意。',
       descEn: code === 'A2' ? 'The temporary stand follows the official A2 seating map. Dimensions, rows, entrances and deck levels are illustrative.'
         : 'Based on the event seating map and mapped footprints. Rows, individual seats, entrances and deck levels are illustrative.',
-      zones: { g: { name: '模型座席', nameEn: 'Model seating', color, price: null, tag: '示意', tagEn: 'Schematic',
-        note: '模型排号和座号', noteEn: 'Model row and seat numbers' } },
+      zones: { g: suzukaZone(zoneKey, color) },
     };
   });
 }

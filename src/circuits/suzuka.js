@@ -54,7 +54,7 @@ function addStarter(scene, track, index) {
 }
 
 export default {
-  id: 'jp', STANDS, TURNS, TRUE_NORTH, projection, venue,
+  id: 'jp', STANDS, TURNS, TRUE_NORTH, projection, venue, currency: 'JP¥',
   seatKit: { seatColor, seatMatrix, seatWorld, seatFacing, SELECTED_COLOR },
   center: [52, -40], defaultNight: false,
   home: { span: [1120, 640], ref: 2013, offsets: portrait => ({

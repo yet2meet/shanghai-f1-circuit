@@ -68,6 +68,23 @@ const locations = {
   GF: ['11 号弯内侧', 'Inside Turn 11'],
 };
 const roofs = new Set(['1', '4', '18', '22', '24', '26A', '26B', '26C']);
+// 2026 Italian GP official 3-day weekend prices (EUR, VAT incl., monzanet.it).
+const prices = {
+  '1': 1344,
+  '2': 444, '3': 444, '27': 444, '28': 444, '29': 444, '30': 444,
+  '4': 684, '5': 594,
+  '6A': 594, '6B': 684, '6C': 1008,
+  '7': 684,
+  '8A': 684, '8B': 684, '8BIS': 594,
+  '9': 792, '10': 792, '10BIS': 444, '11': 444,
+  '12': 594, '13': 594, '14': 594, '16': 792,
+  '17A': 594, '17B': 594, '18': 594, '20': 444,
+  '21A': 594, '21B': 594, '21C': 444, '21D': 444, '21E': 444,
+  '22': 684, '23A': 444, '23B': 594, '24': 594, '25': 210,
+  '26A': 1008, '26B': 684, '26C': 594,
+  '32': 210, '33A': 792, '33B': 792, '34': 684,
+  '35A': 444, '35B': 444, '35C': 444, 'GF': 210,
+};
 const special = {
   '8A': 'Prima Variante Esterna A', '8B': 'Prima Variante Esterna B', '8BIS': 'Uscita Prima Variante',
   '12': 'Ascari 3', '13': 'Ascari 4', '14': 'Ascari 2', '16': 'Ascari',
@@ -82,11 +99,11 @@ function gateText(codes) {
   })).map(g => g.name).join(' / ');
 }
 
-function zoneSpec(code, name, color) {
+function zoneSpec(key, code, name, color) {
   return {
-    name: `${code} · ${name}`, nameEn: `${code} · ${name}`, color, price: null,
-    tag: '示意', tagEn: 'Schematic',
-    note: '排号、座号为模型计数', noteEn: 'Rows and seats are model numbers',
+    name: `${code} · ${name}`, nameEn: `${code} · ${name}`, color, price: prices[key] ?? null,
+    tag: '2026 官价', tagEn: '2026 official',
+    note: '2026 意大利大奖赛三日联票（含税）', noteEn: '2026 Italian GP 3-day pass (VAT incl.)',
   };
 }
 
@@ -99,7 +116,7 @@ export function standPlans(map) {
     const names = (members?.split(' ') ?? keys).map(key => {
       const display = key === '8BIS' ? '8 BIS' : key === '10BIS' ? '10 BIS' : key;
       const text = special[key] ?? (code === 'GT' ? `${en} ${key}` : members ? `${en} ${key.slice(-1)}` : en);
-      return [key, zoneSpec(display, text, color)];
+      return [key, zoneSpec(key, display, text, color)];
     });
     const zoneNames = Object.fromEntries(names);
     const polygon = map.standBodies[index];

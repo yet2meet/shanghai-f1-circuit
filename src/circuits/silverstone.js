@@ -242,6 +242,7 @@ export default {
     notes: () => [
       t('中心线与弯号为近似。维修通道宽度、缓冲区及护墙为示意，赛道按平面建模。', 'The centreline and corner positions are approximate. Pit lane width, runoff and barriers are illustrative. The model uses a flat track surface.'),
       t('看台分区参考 2025 赛事图，座席和出入口为示意。Wing 屋顶、配套建筑轮廓和道路取自地图数据，车库按 FIA 2025 维修通道图分配。立面、工作区尺寸和未标宽度的道路仍待测量复核。', 'Grandstand sections follow the 2025 event map, with illustrative seating and entrances. The Wing roof, building footprints and roads use map data. Garage assignments follow the FIA 2025 pit lane plan. Facades, working area dimensions and untagged road widths remain approximate.'),
+      t('银石实行官网动态调价，无统一固定价目表（未逐座录价）：2025/2026 三日看台总体约 £430–£909+，其中 Landostand 2025 固定价 £474、2026 约 £539 起，实时价格以 silverstone.co.uk 为准。', 'Silverstone uses dynamic pricing with no single fixed price list (not mapped per stand): 2025/2026 3-day grandstands ranged roughly £430–£909+, with Landostand fixed at £474 in 2025 and from £539 in 2026; check silverstone.co.uk for live prices.'),
     ],
     disclaimer: () => t('本网站为非官方爱好者作品。购票及现场通行安排以赛事组织方发布的信息为准。', 'This is an unofficial fan project. Consult the event organiser for ticketing and venue access.'),
     trademarks: () => t('场馆及赛事名称归各自权利人所有。', 'Venue and event names belong to their respective owners.'),

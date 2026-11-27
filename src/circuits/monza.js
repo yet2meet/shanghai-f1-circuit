@@ -77,7 +77,7 @@ function controlLine(scene, track, index) {
 }
 
 export default {
-  id: 'it', STANDS, TURNS, TRUE_NORTH, projection, venue,
+  id: 'it', STANDS, TURNS, TRUE_NORTH, projection, venue, currency: '€',
   seatKit: { seatColor, seatMatrix, seatWorld, seatFacing, SELECTED_COLOR },
   center: [184, -45], defaultNight: false,
   home: { span: [980, 780], ref: 2900, offsets: portrait => ({
