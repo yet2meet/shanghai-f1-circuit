@@ -241,7 +241,7 @@ function run(root, { fromId, toId }) {
         ctx.fillText(L(v, 'city'), x + 12, y - 9);
       }
     }
-    if (newest) setCaption(newest.v);
+    if (newest && S.phase === 'spin') setCaption(newest.v);
 
     raf = requestAnimationFrame(draw);
   }

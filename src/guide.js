@@ -17,12 +17,12 @@ const buildSteps = () => [
     body: () => (mobile()
       ? t('单指拖动移动，双指捏合缩放，双指拖动旋转视角。一直放大到地面后继续放大，就能向前走，可以站在任何位置观察。', 'Drag with one finger to move, pinch to zoom, drag with two fingers to rotate. Keep zooming in at ground level to walk forward and look from anywhere.')
       : t('按住左键拖动移动，右键拖动旋转视角，滚轮朝鼠标所指处缩放。一直放大到地面后继续滚动，就能向前走，可以站在任何位置观察。', 'Left-drag to move, right-drag to rotate, scroll to zoom towards the pointer. Keep scrolling at ground level to walk forward and look from anywhere.')) },
-  ...(circuit.hasStands ? [{ target: '#pillList', title: () => t('看台与票价', 'Grandstands & prices'),
+  ...(circuit.hasStands ? [{ target: '#pillList', title: () => circuit.unpriced ? t('看台与座位', 'Grandstands & seats') : t('看台与票价', 'Grandstands & prices'),
     body: () => circuit.unpriced
       ? t('点这里查看已建的示意看台；票价和官方细分票区尚未收录。', 'Open the list of schematic grandstands; prices and official ticket subdivisions are not recorded.')
       : t('点这里展开看台列表，查看每个看台的位置和官方票价。点击任一看台，镜头会飞到那里，并显示看台详情。', 'Tap here to open the list of grandstands with their locations and official prices. Pick one to fly there and see its details.') }] : []),
   { target: '#pillInfo', title: () => t('赛道信息', 'Circuit info'),
-    body: () => t('赛道长度、圈数、弯道、圈速纪录等基本信息都在这里。', 'Track length, laps, corners, lap record and other key facts.') },
+    body: () => t('赛道长度、弯道与参考基准等基本信息及模型说明都在这里。', 'Track length, corners, reference edition and model notes are all here.') },
   ...(circuit.hasSeats ? [{ title: () => t('选座与座位视角', 'Seats & seat view'), icon: '💺',
     body: () => t('在看台详情里点「进入选座」，再点选座位；双击座位或点「座位视角」，就能坐在这个座位上看赛道。', 'In a stand’s details, choose "Choose seats" and pick a seat. Double-click it or press "Seat view" to see the track from that seat.') }] : []),
   { target: '#minimap', title: () => t('赛道小地图', 'Track map'),

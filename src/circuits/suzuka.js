@@ -172,7 +172,7 @@ export default {
       camBuildings: [...walls, pit.camBuilding, crossoverModel.camBuilding], update(dt, camera) { wheel.update(dt); pit.update(camera); } };
   },
   info: {
-    facts: () => [[t('赛道长度', 'Track length'), '5.807 km'], [t('弯道', 'Corners'), '18'],
+    facts: () => [[t('赛道长度', 'Track length'), '5.807 km'], [t('弯道', 'Corners'), t('18 个', '18')],
       [t('正赛圈数', 'Race laps'), '53'], [t('基准', 'Reference'), t('2026 日本大奖赛', '2026 Japanese Grand Prix')]],
     notes: () => [
       t('比赛线路以地图为基准，场地使用平面底图。交叉桥及引坡、护墙、维修区尺寸与看台座席为示意。', 'The circuit follows mapped alignments on a flat site. The crossover and its approaches, barriers, pit dimensions and individual seats are illustrative.'),

@@ -16,7 +16,7 @@ export const GP_VENUES = [
   { city: '斯帕', gp: '比利时大奖赛', cityEn: 'Spa', gpEn: 'Belgian Grand Prix', lat: 50.44, lon: 5.97 },
   { city: '布达佩斯', gp: '匈牙利大奖赛', cityEn: 'Budapest', gpEn: 'Hungarian Grand Prix', lat: 47.58, lon: 19.25 },
   { city: '赞德沃特', gp: '荷兰大奖赛', cityEn: 'Zandvoort', gpEn: 'Dutch Grand Prix', lat: 52.39, lon: 4.54 },
-  { city: '蒙扎', gp: '意大利大奖赛', cityEn: 'Monza', gpEn: 'Italian Grand Prix', lat: 45.62, lon: 9.28 },
+  { city: '蒙扎', gp: '意大利大奖赛', cityEn: 'Monza', gpEn: 'Italian Grand Prix', lat: 45.621, lon: 9.285, id: 'it' },
   { city: '马德里', gp: '西班牙大奖赛', cityEn: 'Madrid', gpEn: 'Spanish Grand Prix', lat: 40.46, lon: -3.62 },
   { city: '巴库', gp: '阿塞拜疆大奖赛', cityEn: 'Baku', gpEn: 'Azerbaijan Grand Prix', lat: 40.37, lon: 49.85 },
   { city: '新加坡', gp: '新加坡大奖赛', cityEn: 'Singapore', gpEn: 'Singapore Grand Prix', lat: 1.29, lon: 103.86, id: 'sg' },

@@ -6,9 +6,9 @@ import { TEAMS } from '../../teams.js';
 import { canvasTex, floodlit, std } from '../../util.js';
 import { meshBatch } from './meshes.js';
 
-export function garageInterior(building, bays, bayWidth, depth, trackPoints) {
+export function garageInterior(building, bays, bayWidth, depth, trackPoints, circuit = { name: 'SUZUKA', km: '5.807 km' }) {
   const room = new THREE.Group();
-  room.name = 'suzuka-garage-interiors';
+  room.name = `${circuit.name.toLowerCase()}-garage-interiors`;
   building.add(room);
   const { box, add, flush } = meshBatch(room);
   const dark = std('#323941', { roughness: 0.58, metalness: 0.2 }, 0.47);
@@ -19,7 +19,7 @@ export function garageInterior(building, bays, bayWidth, depth, trackPoints) {
   const floor = std('#ffffff', { map: garageFloorTex(3 * bayWidth, depth, bayWidth), roughness: 0.39 }, 0.68);
   const ceiling = std('#ffffff', { map: garageCeilTex(3 * bayWidth, depth, bayWidth) }, 0.64);
   const lamp = new THREE.MeshStandardMaterial({ color: '#d8e8ff', emissive: '#e6f0ff', emissiveIntensity: 0.83 });
-  const telemetry = screenAtlas(TEAMS, trackPoints, { name: 'SUZUKA', km: '5.807 km' });
+  const telemetry = screenAtlas(TEAMS, trackPoints, circuit);
   const monitor = new THREE.MeshStandardMaterial({
     map: telemetry, emissiveMap: telemetry, emissive: '#fff', emissiveIntensity: 0.88, roughness: 0.34,
   });
@@ -32,6 +32,7 @@ export function garageInterior(building, bays, bayWidth, depth, trackPoints) {
   const body = std('#ebc7a7', { vertexColors: true }, 0.62);
   const car = f1CarGeometry();
   const clearWidth = bayWidth - 0.44;
+  const bayScale = Math.min(1, clearWidth / 4.2);
 
   for (const [i, team] of bays.entries()) {
     if (!team) continue;
@@ -84,9 +85,9 @@ export function garageInterior(building, bays, bayWidth, depth, trackPoints) {
     }
     add(jackMat, driverJack.clone().translate(x, 0.028, 3.19));
     add(jackMat, driverJack.clone().rotateY(Math.PI).translate(x, 0.028, 9.35));
-    box(dark, x, 3.49, 3.22, 4.05, 0.14, 0.25);
+    box(dark, x, 3.49, 3.22, 4.05 * bayScale, 0.14, 0.25);
     for (const side of [-1, 1]) {
-      box(steel, x + side * 1.84, 4.00, 3.22, 0.055, 0.97, 0.055);
+      box(steel, x + side * 1.84 * bayScale, 4.00, 3.22, 0.055, 0.97, 0.055);
       const y = 4.48, z = side < 0 ? 5.2 : 7.5;
       add(hoseMat, airGun.clone().rotateY(side > 0 ? Math.PI : 0).translate(x + side * 1.40, y, z));
       const rack = x + side * Math.min(2.5, clearWidth / 2 - 0.50);
@@ -96,23 +97,23 @@ export function garageInterior(building, bays, bayWidth, depth, trackPoints) {
         for (const rz of [5.10, 5.74, 6.38, 7.02]) add(level < 0.2 ? rubber : wraps,
           (level < 0.2 ? tyre : blanket).clone().translate(rack, level + 0.37, rz));
       }
-      const tools = x + side * 1.58;
+      const tools = x + side * 1.58 * bayScale;
       box(color, tools, 0.58, 10.7, 0.82, 1.05, 0.60);
       box(benchtop, tools, 1.12, 10.7, 0.86, 0.07, 0.64);
       for (let r = 0; r < 5; r++) box(dark, tools, 0.27 + r * 0.17, 10.377, 0.71, 0.035, 0.055);
     }
     for (const [j, off] of [-1.5, -0.5, 0.5, 1.5].entries()) {
-      box(dark, x + off, 3.05, 3.22, 0.87, 0.51, 0.09);
-      add(monitor, screenGeo(j, 0.79, 0.44).rotateY(Math.PI).translate(x + off, 3.05, 3.168));
+      box(dark, x + off * bayScale, 3.05, 3.22, 0.87 * bayScale, 0.51, 0.09);
+      add(monitor, screenGeo(j, 0.79 * bayScale, 0.44).rotateY(Math.PI).translate(x + off * bayScale, 3.05, 3.168));
     }
-    box(color, x, 0.026, 1.37, 3.65, 0.021, 0.083);
-    for (const side of [-1, 1]) box(color, x + side * 1.82, 0.027, 5.62, 0.086, 0.022, 8.4);
+    box(color, x, 0.026, 1.37, 3.65 * bayScale, 0.021, 0.083);
+    for (const side of [-1, 1]) box(color, x + side * 1.82 * bayScale, 0.027, 5.62, 0.086, 0.022, 8.4);
     const deskX = (deskBay + 0.5) * bayWidth;
     box(dark, deskX, 0.49, depth - 2.04, clearWidth - 0.83, 0.96, 0.70);
     box(benchtop, deskX, 1.02, depth - 2.04, clearWidth - 0.73, 0.10, 0.78);
     for (const [j, off] of [-1.2, 0, 1.2].entries()) {
-      box(dark, deskX + off, 1.49, depth - 2.21, 0.93, 0.59, 0.07);
-      add(monitor, screenGeo((j + 1) % 4).rotateY(Math.PI).translate(deskX + off, 1.49, depth - 2.253));
+      box(dark, deskX + off * bayScale, 1.49, depth - 2.21, 0.93 * bayScale, 0.59, 0.07);
+      add(monitor, screenGeo((j + 1) % 4, 0.88 * bayScale, 0.53).rotateY(Math.PI).translate(deskX + off * bayScale, 1.49, depth - 2.253));
     }
     box(dark, deskX, 0.43, depth - 3.12, 0.46, 0.10, 0.48);
     box(dark, deskX, 0.71, depth - 3.35, 0.44, 0.47, 0.07);

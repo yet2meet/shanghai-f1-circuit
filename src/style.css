@@ -480,4 +480,14 @@ body.leaving > :not(#scene):not(#splash) { opacity: 0 !important; pointer-events
 .lm b { font-weight: inherit; }
 .lm:hover { background: var(--glass-strong); z-index: 2; }
 .lm.off { opacity: 0; pointer-events: none; }
+body[data-circuit='it'][data-mode='overview'] .label { padding: 3px; }
+body[data-circuit='it'][data-mode='overview'] .label b { display: none; }
+body[data-circuit='it'][data-mode='overview'] .label:hover b {
+  display: block;
+  position: absolute;
+  left: calc(100% + 4px);
+  padding: 5px 8px;
+  border-radius: 10px;
+  background: var(--glass-strong);
+}
 @media (max-width: 860px) { .lm { font-size: 11px; padding: 3px 9px 3px 6px; } .turn { width: 17px; height: 17px; font-size: 9px; } }

@@ -42,6 +42,8 @@ export function buildSilverstoneStands(scene, track, specs) {
     new THREE.BoxGeometry(0.06, 0.41, 0.18).translate(-0.135, 0.205, 0.07),
     new THREE.BoxGeometry(0.06, 0.41, 0.18).translate(0.135, 0.205, 0.07),
   ]);
+  const benchGeo = specs.some(spec => spec.bench)
+    ? new THREE.BoxGeometry(PITCH - 0.015, 0.10, 0.33).translate(0, 0.25, 0) : null;
   const seatMat = floodlit(new THREE.MeshStandardMaterial({ roughness: 0.55 }), 0.58);
   const deckMat = std('#a6adb2', { roughness: 0.9 }, 0.28);
   const stairMat = std('#91a5b4', { roughness: 0.95 }, 0.24);
@@ -61,7 +63,9 @@ export function buildSilverstoneStands(scene, track, specs) {
     let axis = new THREE.Vector3(1, 0, 0), longest = 0;
     world.forEach((p, i) => { const d = world[(i + 1) % world.length].clone().sub(p); if (d.lengthSq() > longest) { longest = d.lengthSq(); axis = d.normalize(); } });
     let outward = new THREE.Vector3(-axis.z, 0, axis.x);
-    const nearest = track.pts[track.nearest(origin.x, origin.z)];
+    const nearest = spec.viewAt
+      ? new THREE.Vector3(spec.viewAt[0], 0, -spec.viewAt[1])
+      : track.pts[track.nearest(origin.x, origin.z)];
     if (outward.dot(origin.clone().sub(nearest)) < 0) { axis.negate(); outward.negate(); }
     let poly, u0, u1, v0, v1, L, D, rows, rowDepth, bays = null;
     if (curve?.bays) {
@@ -117,7 +121,7 @@ export function buildSilverstoneStands(scene, track, specs) {
     const subsections = spec.subsectionBounds?.map(({ name, along, depth, zoneByName }) => ({
       name, zone: zoneByName ? name : undefined,
       u: along.map(subsectionU).sort((a, b) => a - b),
-      v: depth?.map(value => v0 + value) ?? [v0, v1],
+      v: depth?.map(value => v0 + value * (spec.fractionalSubsectionDepth ? D : 1)) ?? [v0, v1],
     }));
     const angle = u => { const direction = outAt(u); return Math.atan2(direction.x, direction.z); };
     const beam = (material, a, b, width) => {
@@ -250,7 +254,7 @@ export function buildSilverstoneStands(scene, track, specs) {
     };
     for (const mesh of portalMeshes) raise(mesh);
     if (portalMeshes.length) scene.add(...portalMeshes);
-    const seatMesh = new THREE.InstancedMesh(seatGeo, seatMat, seats.length);
+    const seatMesh = new THREE.InstancedMesh(spec.bench ? benchGeo : seatGeo, seatMat, seats.length);
     const baseF = new Float32Array(base), rotF = new Float32Array(rot);
     const sObj = { seats, base: baseF, rot: rotF };
     const matrix = new THREE.Matrix4(), color = new THREE.Color();
@@ -422,11 +426,11 @@ export function buildSilverstoneStands(scene, track, specs) {
     };
     stands.push(s);
   }
-  return { stands: groupFamilies(scene, stands, hitboxes, seatGeo, seatMat), hitboxes };
+  return { stands: groupFamilies(scene, stands, hitboxes, seatMat), hitboxes };
 }
 
 // 同一看台的 A/B/C/D 作为一个入口；座位仍保留各自分区、朝向和独立拾取范围。
-function groupFamilies(scene, stands, hitboxes, seatGeo, seatMat) {
+function groupFamilies(scene, stands, hitboxes, seatMat) {
   const groups = new Map();
   for (const s of stands) if (s.spec.family) {
     if (!groups.has(s.spec.family)) groups.set(s.spec.family, []);
@@ -445,14 +449,15 @@ function groupFamilies(scene, stands, hitboxes, seatGeo, seatMat) {
     const zoneSpecs = new Map();
     for (const s of members) for (const block of s.blocks) {
       const zone = block.zone && block.zone !== 'g' ? block.zone : s.spec.section;
-      zoneSpecs.set(zone, {
+      zoneSpecs.set(zone, s.spec.familyZones?.[zone] ?? {
         name: `${zone} 区`, nameEn: `Section ${zone}`, color: s.spec.zones.g.color,
         price: null, tag: '示意', tagEn: 'Schematic', note: '排号、座号为模型计数', noteEn: 'Rows and seats are model numbers',
       });
     }
     const zones = Object.fromEntries([...zoneSpecs.entries()].sort(([a], [b]) => a.localeCompare(b)));
     const [turns, turnsEn] = stand.spec.familyTurns ?? ['选择分区查看', 'Choose a section'];
-    const spec = { id, code, name: `${family} 看台`, nameEn: `${family} Grandstand`, family, grouped: true,
+    const [name, nameEn] = stand.spec.familyLabel ?? [`${family} 看台`, `${family} Grandstand`];
+    const spec = { id, code, name, nameEn, family, grouped: true,
       type: 'seats', schematic: true, color, zones,
       gate: stand.spec.familyTurns ? stand.spec.gate : '待核实',
       gateEn: stand.spec.familyTurns ? stand.spec.gateEn : 'Unverified', turns, turnsEn,
@@ -476,7 +481,7 @@ function groupFamilies(scene, stands, hitboxes, seatGeo, seatMat) {
       for (const hit of hitboxes) if (hit.userData.standId === s.spec.id) hit.userData.standId = id;
     });
     const baseF = new Float32Array(base), rotF = new Float32Array(rot);
-    const mesh = new THREE.InstancedMesh(seatGeo, seatMat, seats.length), m = new THREE.Matrix4(), c = new THREE.Color();
+    const mesh = new THREE.InstancedMesh(stand.mesh.geometry, seatMat, seats.length), m = new THREE.Matrix4(), c = new THREE.Color();
     const data = { seats, base: baseF, rot: rotF };
     for (let i = 0; i < seats.length; i++) { mesh.setMatrixAt(i, seatMatrix(data, i, 1, 0, m)); mesh.setColorAt(i, seatColor(spec, seats[i], c)); }
     mesh.frustumCulled = false; scene.add(mesh);

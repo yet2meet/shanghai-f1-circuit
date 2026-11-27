@@ -1,0 +1,119 @@
+import { V } from '../../util.js';
+import { curvedStandPlan } from '../silverstone/stand-curve.js';
+import layout from './stand-layout.json';
+
+export const GATES = {
+  A: { name: 'A/B · Vedano', zones: '1 2 3 4 5 23 24 25 26 27 28 29 30 35' },
+  B: { name: 'B · Santa Maria', zones: '1 2 3 4 5 6 7 8 12 13 14 16 26 27 28 29 30 32 P' },
+  C: { name: 'C · Costa Bassa', zones: '6 7 8 12 13 14 16 32 P' },
+  D: { name: 'D · Lesmo', zones: '6 9 10 10BIS 11 12 13 14 16 18 32 33 34 P' },
+  G: { name: 'G · Mirabello', zones: '9 10 10BIS 11 12 13 14 16 17 18 20 21 22 23 33 GF P' },
+};
+
+const catalog = [
+  ['1', 'Centrale', '中央看台', 'blue'],
+  ['GT', 'Gradinate Traguardo', '主直道阶梯看台', 'blue', '2 3 27 28 29 30'],
+  ['4', 'Laterale Sinistra', '主直道左侧看台', 'blue'],
+  ['5', 'Piscina', '泳池看台', 'yellow'],
+  ['6', 'Alta Velocità', '高速看台', 'green', '6A 6B 6C'],
+  ['7', 'Biassono', '比亚索诺看台', 'yellow'],
+  ['8', 'Prima Variante', '第一减速弯看台', 'yellow', '8A 8B 8BIS'],
+  ['9', 'Seconda Variante', '第二减速弯看台', 'green'],
+  ['10', 'Roggia', '罗贾看台', 'green'],
+  ['10 BIS', 'Lesmo 2 Interno', '第二莱斯莫弯内侧看台', 'green'],
+  ['11', 'Serraglio', '塞拉利奥看台', 'green'],
+  ['ASC', 'Ascari', '阿斯卡里看台', 'green', '12 13 14 16'],
+  ['17', 'Ascari Esterna', '阿斯卡里外侧看台', 'red', '17A 17B'],
+  ['18', 'Uscita Ascari A', '阿斯卡里出口 A 看台', 'orange'],
+  ['20', 'Rettilineo Parabolica Esterna', '阿尔博雷托弯前直道外侧看台', 'red'],
+  ['21', 'Laterale Parabolica', '阿尔博雷托弯侧看台', 'red', '21A 21B 21C 21D 21E'],
+  ['22', 'Parabolica', '阿尔博雷托弯看台', 'red'],
+  ['23', 'Parabolica Interna', '阿尔博雷托弯内侧看台', 'orange', '23A 23B'],
+  ['24', 'Vedano', '韦达诺看台', 'blue'],
+  ['25', 'Uscita Parabolica', '阿尔博雷托弯出口看台', 'blue'],
+  ['26', 'Laterale Destra', '主直道右侧看台', 'blue', '26A 26B 26C'],
+  ['32', 'Junior Interna', '小赛道内侧看台', 'orange'],
+  ['33', 'Seconda Variante', '第二减速弯侧看台', 'green', '33A 33B'],
+  ['34', 'Lesmo 1 Esterna', '第一莱斯莫弯外侧看台', 'green'],
+  ['35', 'Vedano', '韦达诺分区看台', 'blue', '35A 35B 35C'],
+  ['GF', 'Gradinate Interno Parabolica', '阿尔博雷托弯内侧阶梯看台', 'orange'],
+];
+const colors = { blue: '#497bab', green: '#40866d', red: '#a9484d', yellow: '#ccb94d', orange: '#d08454' };
+const roofs = new Set(['1', '4', '18', '22', '24', '26A', '26B', '26C']);
+const special = {
+  '8A': 'Prima Variante Esterna A', '8B': 'Prima Variante Esterna B', '8BIS': 'Uscita Prima Variante',
+  '12': 'Ascari 3', '13': 'Ascari 4', '14': 'Ascari 2', '16': 'Ascari',
+  '33A': 'Seconda Variante 1', '33B': 'Seconda Variante 2',
+};
+
+function gateText(codes) {
+  return Object.values(GATES).filter(g => codes.some(code => {
+    const key = code.replaceAll(' ', '');
+    const group = key === '10BIS' ? key : key.match(/^\d+/)?.[0] ?? key;
+    return g.zones.split(' ').includes(group);
+  })).map(g => g.name).join(' / ');
+}
+
+function zoneSpec(code, name, color) {
+  return {
+    name: `${code} · ${name}`, nameEn: `${code} · ${name}`, color, price: null,
+    tag: '示意', tagEn: 'Schematic',
+    note: '排号、座号为模型计数', noteEn: 'Rows and seats are model numbers',
+  };
+}
+
+export function standPlans(map) {
+  return layout.map((item, index) => {
+    const keys = item.zones.map(z => z.replaceAll(' ', ''));
+    const [code, en, zh, hue, members] = catalog.find(([id, , , , codes]) =>
+      codes ? codes.split(' ').includes(keys[0]) : id.replaceAll(' ', '') === keys[0]);
+    const color = colors[hue];
+    const names = (members?.split(' ') ?? keys).map(key => {
+      const display = key === '8BIS' ? '8 BIS' : key === '10BIS' ? '10 BIS' : key;
+      const text = special[key] ?? (code === 'GT' ? `${en} ${key}` : members ? `${en} ${key.slice(-1)}` : en);
+      return [key, zoneSpec(display, text, color)];
+    });
+    const zoneNames = Object.fromEntries(names);
+    const polygon = map.standBodies[index];
+    const spec = {
+      id: `IT-${keys[0]}`, code: item.zones[0], name: zh, nameEn: en,
+      type: 'seats', schematic: true, polygon, color, viewAt: item.target,
+      zones: { g: zoneNames[keys[0]] }, covered: roofs.has(keys[0]),
+      bench: ['GT', '8', 'GF'].includes(code),
+      gate: gateText(keys), gateEn: gateText(keys),
+      turns: '2026 意大利大奖赛', turnsEn: '2026 Italian Grand Prix',
+      desc: '台体、入口和模型座席仅用于观察视线。推荐入口来自赛会观众指南。',
+      descEn: 'Stand details, entrances and model seats illustrate sightlines. Recommended gates follow the event spectator guide.',
+    };
+    // Keep both views on the track side of the hospitality building.
+    if (code === '1') {
+      spec.overviewEye = [-258, 32, 147];
+      spec.seatingEye = [-290, 8.8, 218];
+    }
+    if (members) {
+      spec.family = code;
+      spec.familyId = `IT-${code}`;
+      spec.familyCode = code;
+      spec.familyLabel = [zh, en];
+      spec.familyZones = zoneNames;
+      spec.familyTurns = [spec.turns, spec.turnsEn];
+      spec.gate = spec.gateEn = gateText(members.split(' '));
+      spec.section = keys[0];
+      if (keys.length > 1) {
+        // 8A occupies the upper rows and 8B the lower rows of one deck.
+        spec.fractionalSubsectionDepth = true;
+        spec.subsectionBounds = keys.map((name, i) => ({
+          name, along: [0, 1], depth: i ? [0, 0.5] : [0.5, 1], zoneByName: true,
+        }));
+      }
+    }
+    if (item.arc) {
+      const n = item.arc.length;
+      spec.curveOutline = [Array.from({ length: n }, (_, i) => i), Array.from({ length: n }, (_, i) => 2 * n - 1 - i)];
+      spec.regularSweep = true;
+      spec.depth = item.depth;
+      spec.curvePlan = curvedStandPlan(spec);
+    }
+    return spec;
+  });
+}

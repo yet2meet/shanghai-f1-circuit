@@ -213,7 +213,7 @@ export function buildTrack(scene, cfg) {
   // 护墙上的标识带：赛车场名称 + 2026 赛事官方全称（喜力为冠名赞助商）。
   // 各弯道的具体赞助商布置没有可靠公开资料，因此不按弯道摆放品牌，只用已确认的赛事名称。
   const adPanels = ads;
-  const adTex = canvasTex(2048, 64, (c, w, h) => {
+  const adTex = cfg.wallColor ? null : canvasTex(2048, 64, (c, w, h) => {
     const pw = w / adPanels.length;
     adPanels.forEach(([bg, fg, text], k) => {
       c.fillStyle = bg; c.fillRect(k * pw, 0, pw, h);
@@ -222,7 +222,7 @@ export function buildTrack(scene, cfg) {
       c.fillText(text, k * pw + pw / 2, h / 2 + 2, pw - 30);
     });
   }, [1, 1]);
-  const wallMat = floodlit(new THREE.MeshStandardMaterial({ map: adTex, roughness: 0.6, side: THREE.DoubleSide }), 0.6);
+  const wallMat = std(cfg.wallColor ?? '#ffffff', { map: adTex, roughness: 0.6, side: THREE.DoubleSide }, 0.6);
   const barrierSkip = (i, side) => skipScenery(i) || ((side > 0) === pitLeft && pitZone(i));
   const wl = new THREE.Mesh(wall(path, { off: off(1, WG, gwL), h: 1.3, to: N, skip: i => barrierSkip(i, 1), uv: 64 }), wallMat);
   // 右侧护墙从赛道看过去方向相反，贴图反向，文字才不会镜像

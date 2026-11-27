@@ -11,6 +11,28 @@ const KEY = 'sic-circuit';
 
 export const CIRCUITS = [
   {
+    id: 'it',
+    name: '蒙扎国家赛车场', nameEn: 'Autodromo Nazionale Monza',
+    short: '蒙扎赛道', shortEn: 'Monza',
+    city: '蒙扎', cityEn: 'Monza', gp: '意大利大奖赛', gpEn: 'Italian Grand Prix',
+    km: '5.793', turns: 11, hasStands: true, hasSeats: true, unpriced: true,
+    load: () => import('./monza.js'),
+    dict: {
+      title: ['蒙扎国家赛车场 · Autodromo Nazionale Monza', 'Autodromo Nazionale Monza · Formula 1 Italian Grand Prix'],
+      brandName: ['蒙扎国家赛车场', 'Autodromo Nazionale Monza'],
+      brandShort: ['蒙扎赛道', 'Monza'],
+      brandSub: ['Autodromo Nazionale Monza · 5.793 km · 11 弯', '蒙扎国家赛车场 · 5.793 km · 11 turns'],
+      splashSub: ['FORMULA 1 · 意大利大奖赛', 'FORMULA 1 · ITALIAN GRAND PRIX'],
+      pillList: ['看台与座位', 'Grandstands & seats'],
+      listTitle: ['看台与座位', 'Grandstands & seats'],
+      listSub: ['2026 意大利大奖赛 · 模型座席', '2026 Italian Grand Prix · Schematic seating'],
+      footnote: [
+        '分区名称及推荐入口参考 2026 官方资料，台体细部、排座及步行接头为示意。<br/>地图数据 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 贡献者',
+        'Section names and recommended gates follow official 2026 material. Stand details, seats and pedestrian connections are illustrative.<br/>Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+      ],
+    },
+  },
+  {
     id: 'jp',
     name: '铃鹿赛道', nameEn: 'Suzuka Circuit',
     short: '铃鹿赛道', shortEn: 'Suzuka',
@@ -23,6 +45,8 @@ export const CIRCUITS = [
       brandShort: ['铃鹿赛道', 'Suzuka'],
       brandSub: ['Suzuka Circuit · 5.807 km · 18 弯', '铃鹿赛道 · 5.807 km · 18 turns'],
       splashSub: ['FORMULA 1 · 日本大奖赛', 'FORMULA 1 · JAPANESE GRAND PRIX'],
+      pillList: ['看台与座位', 'Grandstands & seats'],
+      listTitle: ['看台与座位', 'Grandstands & seats'],
       listSub: ['2026 日本大奖赛 · 模型座席', '2026 Japanese Grand Prix · Schematic seating'],
       footnote: [
         '看台分区参考 2026 日本大奖赛，模型排号、座号及出入口为示意。<br/>地图数据 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 贡献者',
@@ -43,6 +67,8 @@ export const CIRCUITS = [
       brandShort: ['银石赛道', 'Silverstone'],
       brandSub: ['Silverstone Circuit · 5.891 km · 18 弯', '银石赛道 · 5.891 km · 18 turns'],
       splashSub: ['FORMULA 1 · 英国大奖赛', 'FORMULA 1 · BRITISH GRAND PRIX'],
+      pillList: ['看台与座位', 'Grandstands & seats'],
+      listTitle: ['看台与座位', 'Grandstands & seats'],
       listSub: ['座席为示意 · 票价未收录，请以官方售票信息为准', 'Schematic seating · prices not recorded; consult the official ticket site'],
       footnote: [
         '看台位置参考 2025 英国大奖赛场图。<br/>地图数据 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> 贡献者',
@@ -75,7 +101,7 @@ export const CIRCUITS = [
     name: '滨海湾街道赛道', nameEn: 'Marina Bay Street Circuit',
     short: '滨海湾赛道', shortEn: 'Marina Bay',
     city: '新加坡', cityEn: 'Singapore', gp: '新加坡大奖赛', gpEn: 'Singapore Grand Prix',
-    km: '4.927', turns: 19, hasStands: true, hasSeats: false,
+    km: '4.927', turns: 19, hasStands: true, hasSeats: true,
     load: () => import('./singapore.js'),
     dict: {
       title: ['滨海湾街道赛道 · Marina Bay Street Circuit', 'Marina Bay Street Circuit · Formula 1 Singapore Grand Prix'],

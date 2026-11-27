@@ -215,7 +215,8 @@ export function mountCircuit(entry) {
   const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
   function flyTo(pos, target, dur = 1.6) {
     exitSeatCam();
-    fly = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos.clone(), t1: target.clone(), t: 0, dur };
+    fly = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos.clone(), t1: target.clone(),
+      started: performance.now(), duration: dur * 1000 };
     controls.enabled = false;
   }
   // ───────────────────────── 自由视角：边界、防穿模、随缩放自动倾斜 ─────────────────────────
@@ -321,6 +322,12 @@ export function mountCircuit(entry) {
     const right = new THREE.Vector3().crossVectors(s.f, up);
     const target = s.center.clone();
     const mk = isMobile() ? 1.7 : 1;
+    const presetEye = mode === 'seats' ? s.spec.seatingEye : s.spec.overviewEye;
+    if (presetEye) {
+      const eye = new THREE.Vector3(...presetEye);
+      if (mode !== 'seats' && isMobile()) eye.lerp(target, -0.18);
+      return { pos: eye, target };
+    }
     if (mode === 'seats') {
       const d = THREE.MathUtils.clamp(s.L * 0.16 + 40, 52, 105) * (isMobile() ? 1.35 : 1);
       return { pos: underRoof(s, s.center.clone().addScaledVector(s.f, d).addScaledVector(up, s.H * 0.5 + 40), target), target };
@@ -479,6 +486,7 @@ export function mountCircuit(entry) {
   const _v = new THREE.Vector3();
   function updateLabels() {
     const w = innerWidth, h = innerHeight;
+    const mobile = isMobile();
     const dist = camera.position.distanceTo(controls.target);
     const groundY = built.groundAt?.(camera.position.x, camera.position.z) ?? 0;
     const low = camera.position.y - groundY < 40; // 贴近地面时只保留近处的标签
@@ -490,7 +498,7 @@ export function mountCircuit(entry) {
       if (l.kind === 'stand') show &&= state.mode !== 'seats' && !(state.mode === 'stand' && state.stand.spec.id === l.id);
       else if (l.kind === 'block') show &&= state.mode === 'seats' && state.stand.spec.id === l.id && camera.position.distanceTo(l.pos) < 330 && camera.position.y > l.pos.y;
       else if (l.kind === 'landmark') show &&= state.mode !== 'seats' && dist < Math.max(4200, homeDist * 1.3) && !(low && camera.position.distanceTo(l.pos) > 900);
-      else show &&= state.mode === 'overview' ? dist < Math.max(isMobile() ? 0 : 3200, homeDist * 1.15) : state.mode === 'stand';
+      else show &&= state.mode === 'overview' ? dist < Math.max(mobile ? 0 : 3200, homeDist * 1.15) : state.mode === 'stand';
       l.el.classList.toggle('off', !show);
       if (!show) continue;
       const x = (_v.x * 0.5 + 0.5) * w, y = (-_v.y * 0.5 + 0.5) * h + l.dy;
@@ -795,30 +803,31 @@ export function mountCircuit(entry) {
   let skip = false, frameId = 0;
   function frame() {
     frameId = requestAnimationFrame(frame);
-    const dt = Math.min(clock.getDelta(), 0.05);
+    const elapsed = clock.getDelta();
+    const dt = Math.min(elapsed, 0.05);
     // 画面静止时降到约 30 帧/秒（赛道上的赛车仍在动），节省一半的显卡开销
     const busy = fly || camMoved || state.t !== state.nightTarget || performance.now() - lastPointerMove < 600;
     if (busy) governor(dt); // 只用连续渲染时的真实帧间隔来判断是否掉帧
     skip = !busy && !skip;
     if (skip) { perfClock.dt += dt; return; }
     const step = Math.min(dt + perfClock.dt, 0.1); perfClock.dt = 0;
-    tick(step);
+    tick(step, elapsed);
   }
   const perfClock = { dt: 0 };
-  function tick(dt) {
+  function tick(dt, visualDt = dt) {
     perf.frame++;
     if (state.t !== state.nightTarget) {
-      const d = dt / 2.4;
+      const d = visualDt / 2.4;
       state.t = state.nightTarget > state.t ? Math.min(1, state.t + d) : Math.max(0, state.t - d);
       applyNight(state.t);
     }
     if (fly) {
-      fly.t += dt / fly.dur;
-      const e = ease(Math.min(1, fly.t));
+      const progress = THREE.MathUtils.clamp((performance.now() - fly.started) / fly.duration, 0, 1);
+      const e = ease(progress);
       camera.position.lerpVectors(fly.p0, fly.p1, e);
       controls.target.lerpVectors(fly.t0, fly.t1, e);
       camera.lookAt(controls.target);
-      if (fly.t >= 1) { fly = null; controls.enabled = true; lastDist = 0; limitsDirty = true; } // 飞行结束后不触发自动倾斜
+      if (progress === 1) { fly = null; controls.enabled = true; lastDist = 0; limitsDirty = true; } // 飞行结束后不触发自动倾斜
     } else {
       controls.update();
       if (seatCam) pinSeatCam();
