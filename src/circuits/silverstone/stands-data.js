@@ -36,6 +36,29 @@ const standColors = {
 };
 const sectionLightness = { A: 0, B: 0.047, C: 0.094, D: 0.141 };
 
+const standLocations = {
+  'Farm Curve': ['2–3 号弯外侧', 'Outside Turns 2–3'],
+  'The View': ['1–2 号弯内侧', 'Inside Turns 1–2'],
+  'International Paddock': ['1–2 号弯内侧', 'Inside Turns 1–2'],
+  'Luffield Corner': ['7 号弯入口', 'Turn 7 entry'],
+  'Luffield': ['7 号弯外侧', 'Outside Turn 7'],
+  'National Pits Straight': ['8–9 号弯老维修直道', 'National Pit Straight (Turns 8–9)'],
+  'Becketts': ['11–13 号弯外侧', 'Outside Turns 11–13'],
+  'Chapel': ['14 号弯外侧', 'Outside Turn 14'],
+  'Vale': ['16 号弯', 'Turn 16'],
+  'Club A': ['17 号弯', 'Turn 17'],
+  'Club Corner': ['17–18 号弯', 'Turns 17–18'],
+};
+const familyLocations = {
+  'Hamilton Straight': ['起终点直道 · 正对维修区', 'Start/finish straight · opposite pits'],
+  Abbey: ['1 号弯 · A / B 区', 'Turn 1 · Sections A–B'],
+  Village: ['3–4 号弯 · A / B 区', 'Turns 3–4 · Sections A–B'],
+  Woodcote: ['8 号弯 · A / B 区', 'Turn 8 · Sections A–B'],
+  Stirling: ['9 号弯入口 · A / B 区', 'Turn 9 entry · Sections A–B'],
+  Copse: ['9 号弯 · A–D 区', 'Turn 9 · Sections A–D'],
+  Landostand: ['15 号弯（Stowe）· A–D 区', 'Turn 15 (Stowe) · Sections A–D'],
+};
+
 // 官方图标出分区，未提供测量边界。沿比赛方向按相对比例分割作预览。
 function splitAlongTrack(item, track, ratio = 0.5) {
   const p = item.p, center = p.reduce((a, v) => [a[0] + v[0] / p.length, a[1] + v[1] / p.length], [0, 0]);
@@ -80,13 +103,17 @@ export function silverstoneStandSpecs(track) {
     const match = item.name.match(/^(Landostand|Copse|Abbey|Village|Woodcote|Stirling|Hamilton Straight) ([A-D])$/);
     const color = standColors[match?.[1] ?? item.name];
     const zoneColor = match ? `#${new Color(color).offsetHSL(0, 0, sectionLightness[match[2]]).getHexString()}` : color;
+    const [turns, turnsEn] = standLocations[item.name] ?? familyLocations[match?.[1]] ?? [item.name, item.name];
     return {
       id: `GB${index}`, sourceId: item.id, code: String(index + 1), name: `${item.name} 看台`, nameEn: `${item.name} Grandstand`,
       family: match ? match[1] : null, section: match ? match[2] : null,
+      familyTurns: match ? familyLocations[match[1]] : undefined,
+      groupedDesc: '按看台汇总相邻分区。位置、分段与座位均为示意。',
+      groupedDescEn: 'Adjacent sections are grouped into one grandstand. Layout and seating are illustrative.',
       type: 'seats', schematic: true, color,
       covered: covered2026.has(item.name),
       roofDirection: item.tags['roof:direction'],
-      turns: item.name, turnsEn: item.name,
+      turns, turnsEn,
       gate: '待核实', gateEn: 'Unverified',
       desc: `以 OSM 看台轮廓定位。${item.divided ? '相邻分区的边界按赛事场地图估算。' : item.renamed ? '名称参考赛事场地图。' : ''}${covered2026.has(item.name) ? '顶棚参考其他年份的官网资料，比赛当年状态待核。' : ''}模型外形、排数、座号和出入口均为示意。`,
       descEn: `Located from an OSM footprint. ${item.divided ? 'Section boundaries are estimated using the event map. ' : item.renamed ? 'The name follows the event map. ' : ''}${covered2026.has(item.name) ? 'The roof follows official information from another year; its event-year status needs verification. ' : ''}Shape, rows, seat numbers and entrances are schematic.`,

@@ -462,12 +462,21 @@ export function mountCircuit(entry) {
         <title>${L(s.spec, 'name')}</title><circle class="mm-ring" r="62"/><circle r="46" fill="${mainColor(s.spec)}"/><text y="17">${s.spec.code}</text></g>`; }).join('');
     const el = $('#minimap');
     const [nu, nv] = toMM(TRUE_NORTH[0], -TRUE_NORTH[1]);
-    el.innerHTML = `<svg viewBox="${x0} ${z0} ${x1 - x0} ${z1 - z0}" role="img" aria-label="${tr('赛道小地图', 'Track map')}">
+    const mmW = x1 - x0, mmH = z1 - z0;
+    el.style.setProperty('--mm-ratio', (mmW / mmH).toFixed(4));
+    el.innerHTML = `<svg viewBox="${x0} ${z0} ${mmW} ${mmH}" style="aspect-ratio:${mmW.toFixed(1)}/${mmH.toFixed(1)}" role="img" aria-label="${tr('赛道小地图', 'Track map')}">
       <path class="mm-track-o" d="${d}Z"/><path class="mm-track" d="${d}Z"/>
       ${MM.startLine || ''}
       ${turns}${marks}
       <g id="mmCam"><g transform="scale(${MM.coneScale || 1})"><path d="M0 0 L-70 -150 A165 165 0 0 1 70 -150 Z"/><circle r="20"/></g></g>
     </svg><span class="mm-n" style="--north:${arrowDeg(nu, nv).toFixed(0)}deg">N</span>`;
+    const syncMinimapClear = () => {
+      const h = el.offsetHeight;
+      document.documentElement.style.setProperty('--mm-clear', `${h ? h + 36 : 276}px`);
+    };
+    syncMinimapClear();
+    requestAnimationFrame(syncMinimapClear);
+    addEventListener('resize', syncMinimapClear, { signal });
     el.addEventListener('click', (e) => {
       const g = e.target.closest('.mm-stand');
       if (g) selectStand(g.dataset.id);
@@ -563,7 +572,7 @@ export function mountCircuit(entry) {
     const stats = spec.type === 'seats'
       ? `<div class="stat"><small>${tr('入口', 'Entrance')}</small><b>${L(spec, 'gate')}</b></div>
          <div class="stat"><small>${tr('模型座位', 'Seats (model)')}</small><b>${s.seats.length.toLocaleString()}</b></div>
-         <div class="stat"><small>${circuit.unpriced ? tr('模型分区', 'Model sections') : tr('官方票区', 'Zones')}</small><b>${circuit.unpriced && !spec.grouped ? tr('示意', 'Schematic') : `${new Set(s.blocks.map((b) => b.zone)).size}${tr(' 个', '')}`}</b></div>`
+         <div class="stat"><small>${circuit.unpriced ? tr('分区', 'Sections') : tr('官方票区', 'Zones')}</small><b>${new Set(s.blocks.map((b) => b.zone)).size}${tr(' 个', '')}</b></div>`
       : spec.type === 'block'
       ? `<div class="stat"><small>${tr('入口', 'Entrance')}</small><b>${L(spec, 'gate')}</b></div>
          <div class="stat"><small>${tr('通行票区', 'Access zones')}</small><b>${L(spec, 'access')}</b></div>
@@ -575,7 +584,7 @@ export function mountCircuit(entry) {
       <p class="d-desc">${L(spec, 'desc')}</p>
       <div class="stats">${stats}</div>
       ${spec.grouped ? `<div class="sec-title">${tr('选择分区', 'Choose a section')}</div><div class="chips wide">${(s.sectionBlocks ?? s.blocks).map((b) => `<button class="chip" data-act="group-zone" data-b="${b.idx}" style="--c:${spec.zones[b.zone].color}">${L(spec.zones[b.zone], 'name')}</button>`).join('')}</div>` : ''}
-      ${spec.grouped ? '' : `<div class="sec-title">${circuit.unpriced ? tr('模型信息', 'Model information') : tr('票价 · 三日票', 'Prices · 3-day pass')}</div>${Object.values(spec.zones).map(zoneRow).join('')}`}
+      ${spec.grouped || circuit.unpriced ? '' : `<div class="sec-title">${tr('票价 · 三日票', 'Prices · 3-day pass')}</div>${Object.values(spec.zones).map(zoneRow).join('')}`}
       <div class="actions">
         ${spec.type === 'seats'
           ? `<button class="btn primary" data-act="seats"><svg viewBox="0 0 24 24"><path d="M6 11V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v4M4 13a2 2 0 0 1 4 0v2h8v-2a2 2 0 0 1 4 0v5H4zM7 18v2M17 18v2"/></svg>${tr('进入选座', 'Choose seats')}</button>`

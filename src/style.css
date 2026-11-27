@@ -60,7 +60,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 
 /* 面板 */
 .panel { position: fixed; z-index: 4; border-radius: 26px; display: flex; flex-direction: column; overflow: hidden; }
-.panel.left { top: 96px; left: 20px; width: 296px; max-height: calc(100vh - 372px); min-height: 150px; transition: transform 0.55s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.4s, background 0.6s, border-color 0.6s; }
+.panel.left { top: 96px; left: 20px; width: 296px; max-height: calc(100vh - 372px); min-height: 0; transition: transform 0.55s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.4s, background 0.6s, border-color 0.6s; }
 body[data-mode='seats'] .panel.left { transform: translateX(calc(-100% - 40px)); opacity: 0; pointer-events: none; }
 .panel.right { top: 82px; right: 20px; width: 344px; max-height: calc(100vh - 112px); transition: transform 0.55s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.4s, background 0.6s, border-color 0.6s; }
 .panel.right.hidden { transform: translateX(calc(100% + 40px)); opacity: 0; pointer-events: none; }
@@ -188,7 +188,7 @@ body[data-mode='seats'] .panel.left { transform: translateX(calc(-100% - 40px));
 .chip:active { transform: scale(0.95); }
 
 /* 小地图 */
-.minimap { position: fixed; left: 20px; bottom: 22px; width: 216px; padding: 8px; border-radius: 24px; z-index: 4; line-height: 0; }
+.minimap { position: fixed; left: 20px; bottom: 22px; width: min(216px, calc(min(240px, 32vh) * var(--mm-ratio, 1.35) + 16px)); padding: 8px; border-radius: 24px; z-index: 4; line-height: 0; }
 .minimap svg { width: 100%; height: auto; display: block; overflow: visible; }
 .mm-track-o { fill: none; stroke: var(--text); stroke-opacity: 0.16; stroke-width: 58; stroke-linejoin: round; }
 .mm-track { fill: none; stroke: var(--text); stroke-opacity: 0.82; stroke-width: 24; stroke-linejoin: round; }
@@ -215,7 +215,7 @@ body[data-mode='seats'] .panel.left { transform: translateX(calc(-100% - 40px));
   .segmented button { padding: 8px 10px; font-size: 0; gap: 0; }
   .segmented svg { width: 18px; height: 18px; }
 
-  .minimap { left: 10px; bottom: auto; top: calc(max(10px, env(safe-area-inset-top)) + 58px); width: 118px; padding: 5px; border-radius: 18px; }
+  .minimap { left: 10px; bottom: auto; top: calc(max(10px, env(safe-area-inset-top)) + 58px); width: min(118px, calc(min(156px, 22vh) * var(--mm-ratio, 1.35) + 10px)); padding: 5px; border-radius: 18px; }
   .mm-turn { display: none; }
   .mm-stand circle:not(.mm-ring) { r: 62; }
   .mm-stand text { font-size: 66px; }
@@ -389,8 +389,8 @@ body[data-mode='seats'] .panel.left { transform: translateX(calc(-100% - 40px));
 .pill[aria-expanded='true'] { background: var(--glass-strong); }
 .pill[aria-expanded='true'] .chev { transform: rotate(225deg) translate(-1px, -1px); }
 body[data-mode='seats'] .pills { opacity: 0; pointer-events: none; transform: translateX(-30px); }
-.panel.left { top: 150px; max-height: calc(100vh - 420px); }
-.panel.info { top: 150px; left: 20px; width: 296px; max-height: calc(100vh - 420px); transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.35s; }
+.panel.left { top: 150px; max-height: calc(100vh - 150px - var(--mm-clear, 276px)); z-index: 6; }
+.panel.info { top: 150px; left: 20px; width: 296px; max-height: calc(100vh - 150px - var(--mm-clear, 276px)); z-index: 6; transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.2, 1), opacity 0.35s; }
 body:not([data-open='list']) .panel.left, body:not([data-open='info']) .panel.info { transform: translateY(-12px) scale(0.97); opacity: 0; pointer-events: none; }
 .panel.info .d-scroll { padding: 16px; }
 .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }

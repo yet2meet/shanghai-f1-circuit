@@ -459,10 +459,10 @@ function groupFamilies(scene, stands, hitboxes, seatMat) {
     const [name, nameEn] = stand.spec.familyLabel ?? [`${family} 看台`, `${family} Grandstand`];
     const spec = { id, code, name, nameEn, family, grouped: true,
       type: 'seats', schematic: true, color, zones,
-      gate: stand.spec.familyTurns ? stand.spec.gate : '待核实',
-      gateEn: stand.spec.familyTurns ? stand.spec.gateEn : 'Unverified', turns, turnsEn,
-      desc: stand.spec.familyTurns ? stand.spec.desc : '按看台汇总相邻分区。模型位置、分段、座位和出入口为示意，具体边界和顶棚仍需复核。',
-      descEn: stand.spec.familyTurns ? stand.spec.descEn : 'Adjacent sections are grouped into one grandstand. Positions, section boundaries, seats and entrances are schematic; boundaries and roofs need verification.',
+      gate: stand.spec.gate ?? '待核实',
+      gateEn: stand.spec.gateEn ?? 'Unverified', turns, turnsEn,
+      desc: stand.spec.groupedDesc ?? (stand.spec.familyTurns ? stand.spec.desc : '按看台汇总相邻分区。位置、分段与座位均为示意。'),
+      descEn: stand.spec.groupedDescEn ?? (stand.spec.familyTurns ? stand.spec.descEn : 'Adjacent sections are grouped into one grandstand. Layout and seating are illustrative.'),
     };
     const center = members.reduce((sum, s) => sum.add(s.center), new THREE.Vector3()).multiplyScalar(1 / members.length);
     const radius = Math.max(...members.map(s => s.center.distanceTo(center) + s.radius));

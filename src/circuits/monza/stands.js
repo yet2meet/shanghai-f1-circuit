@@ -39,6 +39,34 @@ const catalog = [
   ['GF', 'Gradinate Interno Parabolica', '阿尔博雷托弯内侧阶梯看台', 'orange'],
 ];
 const colors = { blue: '#497bab', green: '#40866d', red: '#a9484d', yellow: '#ccb94d', orange: '#d08454' };
+const locations = {
+  '1': ['起终点直道 · 正对维修区', 'Main straight · opposite pits'],
+  GT: ['主直道 · 2 / 3 / 27–30 区', 'Main straight · Sections 2, 3, 27–30'],
+  '4': ['主直道北段', 'North main straight'],
+  '5': ['主直道北端', 'North end of main straight'],
+  '6': ['1 号弯前内侧 · 6A–6C', 'Turn 1 approach inside · 6A–6C'],
+  '7': ['1 号弯前外侧', 'Turn 1 approach outside'],
+  '8': ['1–2 号弯 · 8A / 8B / 8 BIS', 'Turns 1–2 · 8A / 8B / 8 BIS'],
+  '9': ['4–5 号弯', 'Turns 4–5'],
+  '10': ['4–5 号弯出口', 'Turns 4–5 exit'],
+  '10 BIS': ['7 号弯内侧', 'Inside Turn 7'],
+  '11': ['塞拉利奥直道', 'Serraglio straight'],
+  ASC: ['8–10 号弯 · 12 / 13 / 14 / 16', 'Turns 8–10 · 12 / 13 / 14 / 16'],
+  '17': ['10 号弯外侧 · 17A / 17B', 'Outside Turn 10 · 17A / 17B'],
+  '18': ['10 号弯出口', 'Turn 10 exit'],
+  '20': ['10–11 号弯直道', 'Approach to Turn 11'],
+  '21': ['11 号弯入口 · 21A–21E', 'Turn 11 entry · 21A–21E'],
+  '22': ['11 号弯外侧', 'Outside Turn 11'],
+  '23': ['11 号弯出口内侧 · 23A / 23B', 'Inside Turn 11 exit · 23A / 23B'],
+  '24': ['11 号弯出口外侧', 'Outside Turn 11 exit'],
+  '25': ['主直道南段 · 维修道入口', 'South main straight · pit entry'],
+  '26': ['主直道南段 · 26A–26C', 'South main straight · 26A–26C'],
+  '32': ['主直道内侧', 'Inside main straight'],
+  '33': ['4–5 号弯入口 · 33A / 33B', 'Turns 4–5 entry · 33A / 33B'],
+  '34': ['6 号弯外侧', 'Outside Turn 6'],
+  '35': ['11 号弯出口 · 35A–35C', 'Turn 11 exit · 35A–35C'],
+  GF: ['11 号弯内侧', 'Inside Turn 11'],
+};
 const roofs = new Set(['1', '4', '18', '22', '24', '26A', '26B', '26C']);
 const special = {
   '8A': 'Prima Variante Esterna A', '8B': 'Prima Variante Esterna B', '8BIS': 'Uscita Prima Variante',
@@ -75,13 +103,14 @@ export function standPlans(map) {
     });
     const zoneNames = Object.fromEntries(names);
     const polygon = map.standBodies[index];
+    const [turns, turnsEn] = locations[code];
     const spec = {
       id: `IT-${keys[0]}`, code: item.zones[0], name: zh, nameEn: en,
       type: 'seats', schematic: true, polygon, color, viewAt: item.target,
       zones: { g: zoneNames[keys[0]] }, covered: roofs.has(keys[0]),
       bench: ['GT', '8', 'GF'].includes(code),
       gate: gateText(keys), gateEn: gateText(keys),
-      turns: '2026 意大利大奖赛', turnsEn: '2026 Italian Grand Prix',
+      turns, turnsEn,
       desc: '台体、入口和模型座席仅用于观察视线。推荐入口来自赛会观众指南。',
       descEn: 'Stand details, entrances and model seats illustrate sightlines. Recommended gates follow the event spectator guide.',
     };
